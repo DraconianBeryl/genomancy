@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 2 - Genome state, immutable versions, and baseline serialization (not started) |
+| Current implementation slice | Slice 3 - Group completeness, body-plan activation, and basic expression (next) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -63,6 +63,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Use repo-local ignored `.dotnet-work/` directories for .NET, NuGet, XDG, and MSBuild writable state during verification. | Slice 0 implementation | Makes verification work in restricted Linux/Codex sandbox environments without relying on writable home directories or shared `/tmp` paths. | Accepted |
 | 2026-06-06 | Force single-node/non-parallel MSBuild restore/build in `scripts/verify.sh`. | Slice 1 implementation | Codex Linux sandbox breaks MSBuild's parallel restore graph probe, causing `_IsProjectRestoreSupported` to fail with `0 Error(s)`; `-m:1`, `RestoreBuildInParallel=false`, and `BuildInParallel=false` make the failure mode disappear and expose normal compiler/test output. | Accepted |
 | 2026-06-06 | Execute the compiled test DLL with `dotnet exec` instead of `dotnet run --no-build`. | Slice 1 implementation | Avoids sandbox-sensitive apphost path resolution after build. | Accepted |
+| 2026-06-06 | Implement Slice 2 binary serialization as a preliminary binary envelope containing the canonical Slice 2 JSON payload. | Slice 2 implementation | Satisfies stream/buffer binary round trips now while deferring a compact stable binary layout decision to the serialization finalization slice. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -89,8 +90,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-MODE-FREEZE | Runtime definitions become immutable after successful validation/migration and before ordinary runtime state loads/operations. | 3.3-3.6, 28.3 | In progress | 1 | Unit + negative tests |
 | REQ-ID | Stable identifiers and compatibility references for authored resources and serialized state. | 3.6, 31.3 | In progress | 1 | Unit + serialization tests |
 | REQ-MODEL | Core object hierarchy from allele/value through nested population structures. | 4, 24 | In progress | 1-2 | Unit tests |
-| REQ-GENOME | Individuals, genomes, immutable permanent versions, and mutable/provisional current copies remain distinct. | 4.1-4.4, 16, 28.1 | Planned | 2 | Unit + invariant tests |
-| REQ-GENE | Categorical and numeric genes, alleles, ranked sets, and opt-in expression patterns. | 4.5-4.7, 5 | Planned | 2-3 | Unit + resource tests |
+| REQ-GENOME | Individuals, genomes, immutable permanent versions, and mutable/provisional current copies remain distinct. | 4.1-4.4, 16, 28.1 | In progress | 2 | Unit + invariant tests |
+| REQ-GENE | Categorical and numeric genes, alleles, ranked sets, and opt-in expression patterns. | 4.5-4.7, 5 | In progress | 2-3 | Unit + resource tests |
 | REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | Planned | 3, 8 | Unit + graph validation |
 | REQ-BODY | Authored body plans, active/dormant/primary states, families, activation, and temporary shapeshifting. | 4.12, 7.1-7.7 | Planned | 3 | Unit + integration |
 | REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | Planned | 8 | Unit + serialization + resource tests |
@@ -102,7 +103,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | Planned | 6 | Unit + resource tests |
 | REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | Planned | 6 | Unit + resource tests |
 | REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | Planned | 5 | Unit + policy coverage |
-| REQ-VERSION | Permanent version creation, commit policies, current-copy behavior, repair, reversion, and visibility. | 16 | Planned | 2, 5 | Unit + integration |
+| REQ-VERSION | Permanent version creation, commit policies, current-copy behavior, repair, reversion, and visibility. | 16 | In progress | 2, 5 | Unit + integration |
 | REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | Planned | 5 | Integration + negative tests |
 | REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | Planned | 3, 8 | Unit + resource tests |
 | REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | Planned | 3+ | Boundary tests |
@@ -113,8 +114,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | Planned | 4, 12 | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
-| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | Planned | 2 onward; finalized 14 | Round-trip + compatibility |
-| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | Planned | 14 | Integration tests |
+| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 14 | Round-trip + compatibility |
+| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | In progress | 14 | Integration tests |
 | REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 15 | Build + adapter tests |
 
 ## Incremental implementation plan
@@ -193,6 +194,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 2 - Genome state, immutable versions, and baseline serialization
 
+**Status:** Verified on 2026-06-06 for the Slice 2 acceptance criteria. Broader requirement families remain **In progress** where later slices add expression, mutation policy, repair, storage modules, and final serialization formats.
+
 **Objective:** Model an individual genome and its permanent/transient lifecycle without yet implementing full expression or reproduction.
 
 **Deliverables**
@@ -222,6 +225,31 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - No-version-spam test for uncommitted temporary changes.
 - JSON and binary round-trip tests, malformed-input tests, and unknown-version tests.
 - In-memory stream/buffer-only boundary tests.
+
+**Implemented**
+
+- `ExternalIndividualId` stores opaque caller-owned individual references without genealogy, identity, or personhood semantics.
+- `GenomeVersionId`, `RankedAlleleEntry`, `RankedAlleleSet`, `GenomeGroupState`, and `GenomeState` model ranked categorical allele IDs and optional numeric allele values.
+- `GenomeVersion` captures stable version ID, system-definition version, external individual ID, optional parent version ID, immutable genome state, and a minimal `ChangeSummary` comparison/audit hint.
+- `CurrentGenomeCopy` derives from a permanent version, permits replacement-based temporary edits, supports discard, and creates a distinct immutable child version only on explicit commit.
+- `GenomeJsonCodec` reads/writes versioned deterministic JSON envelopes through streams, buffers, and text.
+- `GenomeBinaryCodec` reads/writes a preliminary binary stream/buffer payload with a binary magic header and embedded canonical Slice 2 JSON.
+- Deserialization enforces system-definition version compatibility by default and accepts caller-supplied compatibility hooks.
+
+**Implementation simplification choices**
+
+- Numeric gene support is represented as an optional numeric value on ranked allele entries; numeric expression and validation against authored numeric gene definitions are deferred to Slice 3 and later gene-policy work.
+- Current genome edits replace immutable state fragments instead of exposing mutable collections.
+- Historical comparison metadata is limited to parent-version ancestry plus a free-form change summary; full mutation/repair/audit event history is deferred to Slice 5.
+- Binary serialization is intentionally preliminary and wraps the deterministic JSON payload instead of defining the final compact binary format.
+- Serialization compatibility checks compare the embedded system-definition version to a caller-provided expected version unless a caller-provided hook overrides the result.
+
+**Not yet implemented**
+
+- No expression, body-plan activation, group completeness, ploidy validation, reproduction, mutation, repair, reversion, or visibility policy behavior.
+- No validation that genome allele IDs are allowed by a frozen system definition; this arrives with expression/group validation slices.
+- No permanent filesystem, database, repository, or Godot serialization integration.
+- No final cross-version JSON/binary compatibility contract beyond the Slice 2 envelope version and system-definition version hook.
 
 **Requirements advanced:** REQ-MODEL, REQ-GENOME, REQ-GENE, REQ-VERSION, REQ-SERIAL, REQ-STORAGE.
 

@@ -1,7 +1,9 @@
 using System.Reflection;
 using Genomancy.Core;
 using Genomancy.Core.Definitions;
+using Genomancy.Core.Genome;
 using Genomancy.Core.Runtime;
+using Genomancy.Core.Serialization;
 
 var tests = new (string Name, Action Test)[]
 {
@@ -21,6 +23,13 @@ var tests = new (string Name, Action Test)[]
     ("Validation reports group dependency cycles", ValidationReportsGroupDependencyCycles),
     ("Validation diagnostics are deterministic", ValidationDiagnosticsAreDeterministic),
     ("Runtime startup applies migration before freeze", RuntimeStartupAppliesMigrationBeforeFreeze),
+    ("Genome versions isolate collection aliases", GenomeVersionsIsolateCollectionAliases),
+    ("Current genome copy edits discard and commit explicitly", CurrentGenomeCopyEditsDiscardAndCommitExplicitly),
+    ("Uncommitted current genome changes do not create version spam", UncommittedCurrentGenomeChangesDoNotCreateVersionSpam),
+    ("Genome JSON round trip preserves version state and ancestry", GenomeJsonRoundTripPreservesVersionStateAndAncestry),
+    ("Genome binary round trip preserves version state and ancestry", GenomeBinaryRoundTripPreservesVersionStateAndAncestry),
+    ("Genome serializers reject malformed and unknown versions", GenomeSerializersRejectMalformedAndUnknownVersions),
+    ("Genome serialization uses caller supplied streams and buffers", GenomeSerializationUsesCallerSuppliedStreamsAndBuffers),
 };
 
 var failures = new List<string>();
@@ -267,6 +276,122 @@ static void RuntimeStartupAppliesMigrationBeforeFreeze()
     AssertEqual(Id("body.human"), runtimeDefinition.BodyPlans[0].Id);
 }
 
+static void GenomeVersionsIsolateCollectionAliases()
+{
+    var groups = new List<GenomeGroupState>
+    {
+        CreateCommonGroupState("allele.skin.baseline"),
+    };
+
+    var version = new GenomeVersion(
+        GenomeVersionId.Parse("genome.v1"),
+        TestVersion(),
+        ExternalIndividualId.Parse("external:person-1"),
+        new GenomeState(groups));
+
+    groups.Add(CreateCommonGroupState("allele.skin.changed"));
+
+    AssertEqual(1, version.State.Groups.Count);
+    AssertEqual(Id("allele.skin.baseline"), version.State.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+}
+
+static void CurrentGenomeCopyEditsDiscardAndCommitExplicitly()
+{
+    var permanent = CreateGenomeVersion("genome.v1", null, "allele.skin.baseline");
+    var current = new CurrentGenomeCopy(permanent);
+
+    current.ReplaceGroup(CreateCommonGroupState("allele.skin.changed"));
+
+    AssertTrue(current.HasUncommittedChanges, "Current copy must track divergence from the base version.");
+    AssertEqual(Id("allele.skin.baseline"), permanent.State.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+    AssertEqual(Id("allele.skin.changed"), current.CurrentState.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+
+    current.DiscardChanges();
+
+    AssertTrue(!current.HasUncommittedChanges, "Discard must restore the latest permanent version state.");
+    AssertEqual(Id("allele.skin.baseline"), current.CurrentState.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+
+    current.ReplaceGroup(CreateCommonGroupState("allele.skin.changed"));
+    var committed = current.Commit(GenomeVersionId.Parse("genome.v2"), "manual change");
+
+    AssertEqual(GenomeVersionId.Parse("genome.v1"), committed.ParentVersionId);
+    AssertEqual(GenomeVersionId.Parse("genome.v2"), current.BaseVersion.Id);
+    AssertTrue(!current.HasUncommittedChanges, "Commit must make the new permanent version current.");
+    AssertEqual(Id("allele.skin.changed"), committed.State.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+}
+
+static void UncommittedCurrentGenomeChangesDoNotCreateVersionSpam()
+{
+    var permanent = CreateGenomeVersion("genome.v1", null, "allele.skin.baseline");
+    var current = new CurrentGenomeCopy(permanent);
+
+    current.ReplaceGroup(CreateCommonGroupState("allele.skin.changed-a"));
+    current.ReplaceGroup(CreateCommonGroupState("allele.skin.changed-b"));
+
+    AssertEqual(GenomeVersionId.Parse("genome.v1"), current.BaseVersion.Id);
+    AssertEqual(null, current.BaseVersion.ParentVersionId);
+
+    var committed = current.Commit(GenomeVersionId.Parse("genome.v2"));
+
+    AssertEqual(GenomeVersionId.Parse("genome.v1"), committed.ParentVersionId);
+    AssertEqual(Id("allele.skin.changed-b"), committed.State.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+}
+
+static void GenomeJsonRoundTripPreservesVersionStateAndAncestry()
+{
+    var version = CreateGenomeVersion("genome.v2", "genome.v1", "allele.skin.changed", numericValue: 0.75);
+    var text = GenomeJsonCodec.WriteVersionToText(version);
+    var roundTripped = GenomeJsonCodec.ReadVersionFromBuffer(System.Text.Encoding.UTF8.GetBytes(text), TestVersion());
+
+    AssertGenomeVersionsEqual(version, roundTripped);
+    AssertEqual(text, GenomeJsonCodec.WriteVersionToText(version));
+}
+
+static void GenomeBinaryRoundTripPreservesVersionStateAndAncestry()
+{
+    var version = CreateGenomeVersion("genome.v2", "genome.v1", "allele.skin.changed", numericValue: 0.75);
+    var buffer = GenomeBinaryCodec.WriteVersionToBuffer(version);
+    var roundTripped = GenomeBinaryCodec.ReadVersionFromBuffer(buffer, TestVersion());
+
+    AssertGenomeVersionsEqual(version, roundTripped);
+}
+
+static void GenomeSerializersRejectMalformedAndUnknownVersions()
+{
+    AssertThrows<GenomeSerializationException>(
+        () => GenomeJsonCodec.ReadVersionFromBuffer("{malformed"u8, TestVersion()));
+
+    var futureVersion = CreateGenomeVersion("genome.v1", null, "allele.skin.baseline", systemVersion: "future.1");
+
+    AssertThrows<GenomeSerializationException>(
+        () => GenomeJsonCodec.ReadVersionFromBuffer(GenomeJsonCodec.WriteVersionToBuffer(futureVersion), TestVersion()));
+
+    var accepted = GenomeJsonCodec.ReadVersionFromBuffer(
+        GenomeJsonCodec.WriteVersionToBuffer(futureVersion),
+        TestVersion(),
+        static (_, _) => GenomeCompatibilityResult.Compatible());
+
+    AssertEqual(SystemDefinitionVersion.Parse("future.1"), accepted.SystemDefinitionVersion);
+
+    var binary = GenomeBinaryCodec.WriteVersionToBuffer(futureVersion);
+    AssertThrows<GenomeSerializationException>(() => GenomeBinaryCodec.ReadVersionFromBuffer(binary[..4], TestVersion()));
+}
+
+static void GenomeSerializationUsesCallerSuppliedStreamsAndBuffers()
+{
+    var version = CreateGenomeVersion("genome.v1", null, "allele.skin.baseline");
+
+    using var jsonStream = new MemoryStream();
+    GenomeJsonCodec.WriteVersion(jsonStream, version);
+    jsonStream.Position = 0;
+    AssertGenomeVersionsEqual(version, GenomeJsonCodec.ReadVersion(jsonStream, TestVersion()));
+
+    using var binaryStream = new MemoryStream();
+    GenomeBinaryCodec.WriteVersion(binaryStream, version);
+    binaryStream.Position = 0;
+    AssertGenomeVersionsEqual(version, GenomeBinaryCodec.ReadVersion(binaryStream, TestVersion()));
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -287,6 +412,73 @@ static SystemDefinitionBuilder CreateNoisyInvalidBuilder()
     builder.AddGroup(new GroupDefinition(Id("group.a"), dependencyGroupIds: [Id("group.b")], geneIds: [Id("missing.gene")]));
     builder.AddGene(new GeneDefinition(Id("gene.skin"), [Id("missing.allele")]));
     return builder;
+}
+
+static GenomeVersion CreateGenomeVersion(
+    string id,
+    string? parentId,
+    string alleleId,
+    double? numericValue = null,
+    string systemVersion = "test.1")
+{
+    return new GenomeVersion(
+        GenomeVersionId.Parse(id),
+        SystemDefinitionVersion.Parse(systemVersion),
+        ExternalIndividualId.Parse("external:person-1"),
+        new GenomeState([CreateCommonGroupState(alleleId, numericValue)]),
+        parentId is null ? null : GenomeVersionId.Parse(parentId),
+        "test change");
+}
+
+static GenomeGroupState CreateCommonGroupState(string alleleId, double? numericValue = null)
+{
+    return new GenomeGroupState(
+        Id("group.common"),
+        [
+            new RankedAlleleSet(
+                Id("gene.skin"),
+                [
+                    new RankedAlleleEntry(Id(alleleId), 0, numericValue),
+                ]),
+        ]);
+}
+
+static void AssertGenomeVersionsEqual(GenomeVersion expected, GenomeVersion actual)
+{
+    AssertEqual(expected.Id, actual.Id);
+    AssertEqual(expected.SystemDefinitionVersion, actual.SystemDefinitionVersion);
+    AssertEqual(expected.IndividualId, actual.IndividualId);
+    AssertEqual(expected.ParentVersionId, actual.ParentVersionId);
+    AssertEqual(expected.ChangeSummary, actual.ChangeSummary);
+    AssertEqual(expected.State.Groups.Count, actual.State.Groups.Count);
+
+    for (var groupIndex = 0; groupIndex < expected.State.Groups.Count; groupIndex++)
+    {
+        var expectedGroup = expected.State.Groups[groupIndex];
+        var actualGroup = actual.State.Groups[groupIndex];
+
+        AssertEqual(expectedGroup.GroupId, actualGroup.GroupId);
+        AssertEqual(expectedGroup.GeneAlleles.Count, actualGroup.GeneAlleles.Count);
+
+        for (var geneIndex = 0; geneIndex < expectedGroup.GeneAlleles.Count; geneIndex++)
+        {
+            var expectedSet = expectedGroup.GeneAlleles[geneIndex];
+            var actualSet = actualGroup.GeneAlleles[geneIndex];
+
+            AssertEqual(expectedSet.GeneId, actualSet.GeneId);
+            AssertEqual(expectedSet.Entries.Count, actualSet.Entries.Count);
+
+            for (var entryIndex = 0; entryIndex < expectedSet.Entries.Count; entryIndex++)
+            {
+                var expectedEntry = expectedSet.Entries[entryIndex];
+                var actualEntry = actualSet.Entries[entryIndex];
+
+                AssertEqual(expectedEntry.AlleleId, actualEntry.AlleleId);
+                AssertEqual(expectedEntry.Rank, actualEntry.Rank);
+                AssertEqual(expectedEntry.NumericValue, actualEntry.NumericValue);
+            }
+        }
+    }
 }
 
 static SystemDefinitionVersion TestVersion()
