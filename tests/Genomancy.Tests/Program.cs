@@ -3,6 +3,7 @@ using Genomancy.Core;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
 
@@ -37,6 +38,13 @@ var tests = new (string Name, Action Test)[]
     ("Expression strategies are deterministic and distinct", ExpressionStrategiesAreDeterministicAndDistinct),
     ("Expression requires explicit body plan context and opaque external facts", ExpressionRequiresExplicitContextAndOpaqueExternalFacts),
     ("Individual expression state requires at least one active available body plan", IndividualExpressionStateRequiresActiveAvailableBodyPlan),
+    ("Seeded diploid reproduction produces deterministic offspring serialization", SeededDiploidReproductionProducesDeterministicOffspringSerialization),
+    ("Multi parent and variable ploidy reproduction uses explicit contributors", MultiParentAndVariablePloidyReproductionUsesExplicitContributors),
+    ("Ambiguous lower arity reproduction is rejected", AmbiguousLowerArityReproductionIsRejected),
+    ("Same individual can fill multiple parent roles", SameIndividualCanFillMultipleParentRoles),
+    ("Weighted transmission excludes zero weights and validates finite weights", WeightedTransmissionExcludesZeroWeightsAndValidatesFiniteWeights),
+    ("Named random streams prevent unrelated gene perturbation", NamedRandomStreamsPreventUnrelatedGenePerturbation),
+    ("Reproduction reports compatibility outcomes and preserves parents", ReproductionReportsCompatibilityOutcomesAndPreservesParents),
 };
 
 var failures = new List<string>();
@@ -603,6 +611,199 @@ static void IndividualExpressionStateRequiresActiveAvailableBodyPlan()
         "At least one active complete body plan must satisfy individual runtime state.");
 }
 
+static void SeededDiploidReproductionProducesDeterministicOffspringSerialization()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var mother = CreateParentGenome("parent.mother", "external:mother", "allele.skin.light", "allele.skin.dark");
+    var father = CreateParentGenome("parent.father", "external:father", "allele.skin.dark", "allele.skin.light");
+
+    var first = Reproduce(
+        definition,
+        42,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)]);
+    var second = Reproduce(
+        definition,
+        42,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)]);
+
+    AssertEqual(ReproductionResultStatus.Success, first.Status);
+    AssertTrue(first.OffspringVersion is not null, "Successful reproduction must create offspring.");
+    AssertTrue(second.OffspringVersion is not null, "Successful reproduction must create offspring.");
+    var firstOffspring = first.OffspringVersion ?? throw new InvalidOperationException("Expected offspring.");
+    var secondOffspring = second.OffspringVersion ?? throw new InvalidOperationException("Expected offspring.");
+    AssertEqual(
+        GenomeJsonCodec.WriteVersionToText(firstOffspring),
+        GenomeJsonCodec.WriteVersionToText(secondOffspring));
+    AssertEqual(definition.Version, firstOffspring.SystemDefinitionVersion);
+    AssertEqual(2, OffspringAlleles(first, Id("group.common"), Id("gene.skin")).Count);
+}
+
+static void MultiParentAndVariablePloidyReproductionUsesExplicitContributors()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 3).Freeze();
+    var firstParent = CreateParentGenome("parent.one", "external:one", "allele.skin.light");
+    var secondParent = CreateParentGenome("parent.two", "external:two", "allele.skin.dark");
+    var thirdParent = CreateParentGenome("parent.three", "external:three", "allele.skin.gold");
+
+    var result = Reproduce(
+        definition,
+        7,
+        [
+            new ReproductionParentRole("one", firstParent),
+            new ReproductionParentRole("two", secondParent),
+            new ReproductionParentRole("three", thirdParent),
+        ]);
+
+    AssertEqual(ReproductionResultStatus.Success, result.Status);
+    AssertEqual(3, OffspringAlleles(result, Id("group.common"), Id("gene.skin")).Count);
+
+    var diploidDefinition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var lowerArity = Reproduce(
+        diploidDefinition,
+        7,
+        [
+            new ReproductionParentRole("one", firstParent),
+            new ReproductionParentRole("two", secondParent),
+            new ReproductionParentRole("three", thirdParent),
+        ],
+        new ReproductionPolicy(contributingRoleNames: ["one", "three"]));
+
+    AssertEqual(ReproductionResultStatus.Success, lowerArity.Status);
+    var alleleIds = OffspringAlleles(lowerArity, Id("group.common"), Id("gene.skin"))
+        .Select(entry => entry.AlleleId)
+        .ToArray();
+    AssertEqual(Id("allele.skin.light"), alleleIds[0]);
+    AssertEqual(Id("allele.skin.gold"), alleleIds[1]);
+}
+
+static void AmbiguousLowerArityReproductionIsRejected()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var result = Reproduce(
+        definition,
+        7,
+        [
+            new ReproductionParentRole("one", CreateParentGenome("parent.one", "external:one", "allele.skin.light")),
+            new ReproductionParentRole("two", CreateParentGenome("parent.two", "external:two", "allele.skin.dark")),
+            new ReproductionParentRole("three", CreateParentGenome("parent.three", "external:three", "allele.skin.gold")),
+        ]);
+
+    AssertEqual(ReproductionResultStatus.InvalidRequest, result.Status);
+    AssertContainsReproductionDiagnostic(result.Diagnostics, "REPRODUCTION_AMBIGUOUS_PLOIDY");
+}
+
+static void SameIndividualCanFillMultipleParentRoles()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var parent = CreateParentGenome("parent.same", "external:same", "allele.skin.light");
+    var result = Reproduce(
+        definition,
+        13,
+        [new ReproductionParentRole("self-a", parent), new ReproductionParentRole("self-b", parent)]);
+
+    AssertEqual(ReproductionResultStatus.Success, result.Status);
+    AssertEqual(2, OffspringAlleles(result, Id("group.common"), Id("gene.skin")).Count);
+}
+
+static void WeightedTransmissionExcludesZeroWeightsAndValidatesFiniteWeights()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 1).Freeze();
+    var parent = CreateParentGenome("parent.weighted", "external:weighted", "allele.skin.light", "allele.skin.dark");
+    var result = Reproduce(
+        definition,
+        99,
+        [new ReproductionParentRole("source", parent)],
+        new ReproductionPolicy(
+            transmissionWeights:
+            [
+                new TransmissionWeight("source", Id("group.common"), Id("gene.skin"), Id("allele.skin.light"), 0),
+                new TransmissionWeight("source", Id("group.common"), Id("gene.skin"), Id("allele.skin.dark"), 1),
+            ]));
+
+    AssertEqual(ReproductionResultStatus.Success, result.Status);
+    AssertEqual(Id("allele.skin.dark"), OffspringAlleles(result, Id("group.common"), Id("gene.skin"))[0].AlleleId);
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new TransmissionWeight("source", Id("group.common"), Id("gene.skin"), Id("allele.skin.light"), double.PositiveInfinity));
+
+    var lightWins = 0;
+    var darkWins = 0;
+
+    for (ulong seed = 0; seed < 128; seed++)
+    {
+        var weightedResult = Reproduce(
+            definition,
+            seed,
+            [new ReproductionParentRole("source", parent)],
+            new ReproductionPolicy(
+                transmissionWeights:
+                [
+                    new TransmissionWeight("source", Id("group.common"), Id("gene.skin"), Id("allele.skin.light"), 9),
+                    new TransmissionWeight("source", Id("group.common"), Id("gene.skin"), Id("allele.skin.dark"), 1),
+                ]));
+        var selectedAllele = OffspringAlleles(weightedResult, Id("group.common"), Id("gene.skin"))[0].AlleleId;
+
+        if (selectedAllele == Id("allele.skin.light"))
+        {
+            lightWins++;
+        }
+        else if (selectedAllele == Id("allele.skin.dark"))
+        {
+            darkWins++;
+        }
+    }
+
+    AssertTrue(lightWins > darkWins, "Higher weighted allele should win more often across a deterministic seed sweep.");
+}
+
+static void NamedRandomStreamsPreventUnrelatedGenePerturbation()
+{
+    var baseDefinition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var expandedDefinition = CreateReproductionDefinition(requiredSkinAlleleCount: 2, includeFur: true).Freeze();
+    var mother = CreateParentGenome("parent.mother", "external:mother", "allele.skin.light", "allele.skin.dark", includeFur: true);
+    var father = CreateParentGenome("parent.father", "external:father", "allele.skin.dark", "allele.skin.light", includeFur: true);
+
+    var baseResult = Reproduce(
+        baseDefinition,
+        123,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)]);
+    var expandedResult = Reproduce(
+        expandedDefinition,
+        123,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)]);
+
+    AssertEqual(
+        OffspringAlleles(baseResult, Id("group.common"), Id("gene.skin"))[0].AlleleId,
+        OffspringAlleles(expandedResult, Id("group.common"), Id("gene.skin"))[0].AlleleId);
+    AssertEqual(
+        OffspringAlleles(baseResult, Id("group.common"), Id("gene.skin"))[1].AlleleId,
+        OffspringAlleles(expandedResult, Id("group.common"), Id("gene.skin"))[1].AlleleId);
+}
+
+static void ReproductionReportsCompatibilityOutcomesAndPreservesParents()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var mother = CreateParentGenome("parent.mother", "external:mother", "allele.skin.light");
+    var father = CreateParentGenome("parent.father", "external:father", "allele.skin.dark");
+    var motherBefore = GenomeJsonCodec.WriteVersionToText(mother);
+    var fatherBefore = GenomeJsonCodec.WriteVersionToText(father);
+
+    var sterile = Reproduce(
+        definition,
+        55,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)],
+        new ReproductionPolicy(ReproductionCompatibility.Sterile));
+    var incompatible = Reproduce(
+        definition,
+        55,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)],
+        new ReproductionPolicy(ReproductionCompatibility.Incompatible));
+
+    AssertEqual(ReproductionResultStatus.Sterile, sterile.Status);
+    AssertEqual(ReproductionResultStatus.Incompatible, incompatible.Status);
+    AssertEqual(motherBefore, GenomeJsonCodec.WriteVersionToText(mother));
+    AssertEqual(fatherBefore, GenomeJsonCodec.WriteVersionToText(father));
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -724,6 +925,116 @@ static GenomeGroupState CreateExpressionCommonGroupState()
         ]);
 }
 
+static SystemDefinitionBuilder CreateReproductionDefinition(int requiredSkinAlleleCount, bool includeFur = false)
+{
+    var builder = new SystemDefinitionBuilder(TestVersion());
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.light")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.dark")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.gold")));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.skin"),
+        [Id("allele.skin.light"), Id("allele.skin.dark"), Id("allele.skin.gold")],
+        requiredAlleleCount: requiredSkinAlleleCount));
+    builder.AddGroup(new GroupDefinition(Id("group.common"), geneIds: [Id("gene.skin")]));
+
+    if (includeFur)
+    {
+        builder.AddAllele(new AlleleDefinition(Id("allele.fur.short")));
+        builder.AddAllele(new AlleleDefinition(Id("allele.fur.long")));
+        builder.AddGene(new GeneDefinition(
+            Id("gene.fur"),
+            [Id("allele.fur.short"), Id("allele.fur.long")],
+            requiredAlleleCount: requiredSkinAlleleCount));
+        builder.AddGroup(new GroupDefinition(Id("group.fur"), geneIds: [Id("gene.fur")]));
+    }
+
+    builder.AddBodyPlan(new BodyPlanDefinition(
+        Id("body.reproduction-test"),
+        requiredGroupIds: includeFur ? [Id("group.common"), Id("group.fur")] : [Id("group.common")]));
+
+    return builder;
+}
+
+static GenomeVersion CreateParentGenome(
+    string versionId,
+    string individualId,
+    string firstSkinAllele,
+    string? secondSkinAllele = null,
+    bool includeFur = false)
+{
+    var groups = new List<GenomeGroupState>
+    {
+        new(
+            Id("group.common"),
+            [
+                new RankedAlleleSet(
+                    Id("gene.skin"),
+                    (secondSkinAllele is null
+                        ? [new RankedAlleleEntry(Id(firstSkinAllele), 0)]
+                        : new[]
+                        {
+                            new RankedAlleleEntry(Id(firstSkinAllele), 0),
+                            new RankedAlleleEntry(Id(secondSkinAllele), 1),
+                        })),
+            ]),
+    };
+
+    if (includeFur)
+    {
+        groups.Add(new GenomeGroupState(
+            Id("group.fur"),
+            [
+                new RankedAlleleSet(
+                    Id("gene.fur"),
+                    (secondSkinAllele is null
+                        ? [new RankedAlleleEntry(Id("allele.fur.short"), 0)]
+                        : new[]
+                        {
+                            new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                            new RankedAlleleEntry(Id("allele.fur.long"), 1),
+                        })),
+            ]));
+    }
+
+    return new GenomeVersion(
+        GenomeVersionId.Parse(versionId),
+        TestVersion(),
+        ExternalIndividualId.Parse(individualId),
+        new GenomeState(groups));
+}
+
+static ReproductionResult Reproduce(
+    FrozenSystemDefinition definition,
+    ulong seed,
+    IEnumerable<ReproductionParentRole> parentRoles,
+    ReproductionPolicy? policy = null)
+{
+    return OrdinaryReproductionService.Reproduce(new ReproductionRequest(
+        definition,
+        parentRoles,
+        policy ?? new ReproductionPolicy(),
+        seed,
+        GenomeVersionId.Parse("offspring.v1"),
+        ExternalIndividualId.Parse("external:offspring")));
+}
+
+static IReadOnlyList<RankedAlleleEntry> OffspringAlleles(
+    ReproductionResult result,
+    ResourceId groupId,
+    ResourceId geneId)
+{
+    if (result.OffspringVersion is null)
+    {
+        throw new InvalidOperationException("Expected offspring version.");
+    }
+
+    return result.OffspringVersion.State.Groups
+        .Single(group => group.GroupId == groupId)
+        .GeneAlleles
+        .Single(set => set.GeneId == geneId)
+        .Entries;
+}
+
 static void AssertGenomeVersionsEqual(GenomeVersion expected, GenomeVersion actual)
 {
     AssertEqual(expected.Id, actual.Id);
@@ -787,6 +1098,15 @@ static void AssertContainsExpressionDiagnostic(IEnumerable<ExpressionDiagnostic>
     {
         throw new InvalidOperationException(
             $"Expected expression diagnostic '{code}'. Actual diagnostics: {string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"))}");
+    }
+}
+
+static void AssertContainsReproductionDiagnostic(IEnumerable<ReproductionDiagnostic> diagnostics, string code)
+{
+    if (!diagnostics.Any(diagnostic => diagnostic.Code == code))
+    {
+        throw new InvalidOperationException(
+            $"Expected reproduction diagnostic '{code}'. Actual diagnostics: {string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"))}");
     }
 }
 

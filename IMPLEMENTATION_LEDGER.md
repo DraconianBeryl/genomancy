@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 4 - Deterministic inheritance and ordinary reproduction (next) |
+| Current implementation slice | Slice 5 - Mutation, commit policy, repair, and acquired heritable changes (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -65,6 +65,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Execute the compiled test DLL with `dotnet exec` instead of `dotnet run --no-build`. | Slice 1 implementation | Avoids sandbox-sensitive apphost path resolution after build. | Accepted |
 | 2026-06-06 | Implement Slice 2 binary serialization as a preliminary binary envelope containing the canonical Slice 2 JSON payload. | Slice 2 implementation | Satisfies stream/buffer binary round trips now while deferring a compact stable binary layout decision to the serialization finalization slice. | Accepted |
 | 2026-06-06 | Add `GeneDefinition.RequiredAlleleCount` and `GeneDefinition.ExpressionStrategy` as defaulted definition fields. | Slice 3 implementation | Enables initial ploidy/arity checks and expression strategies without breaking existing constructor call sites. | Accepted |
+| 2026-06-06 | Use named deterministic random streams derived from a root seed with FNV-1a stream-name hashing and SplitMix64 draws. | Slice 4 implementation | Gives cross-runtime deterministic stream separation without relying on `System.Random` as a serialized behavior contract. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -80,6 +81,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-008 | Serialized authored references use stable IDs; runtime variants reference frozen definitions and policies. | Preserves compatibility and avoids embedding mutable authoring definitions. | Accepted |
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
 | ARC-010 | The initial target framework is `net9.0`; binary encoding and SQLite provider remain open until serialization/storage refinement. | .NET SDK 9.0.111 and Godot 4.6.2 are installed locally; the core has no Godot dependency, so retargeting remains possible. | Partially resolved |
+| ARC-011 | Seeded random mechanics use named streams derived from a root seed and a specified SplitMix64 implementation. | Keeps reproduction deterministic and prevents unrelated random draws from perturbing allele selection. | Accepted |
 
 ## Requirements register
 
@@ -98,8 +100,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | Planned | 8 | Unit + serialization + resource tests |
 | REQ-DEVELOP | Developmental sequencing, gestation, post-birth requirements, and maternal/gestational effects. | 8 | Planned | 7 | Integration + resource tests |
 | REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | Planned | 7 | Unit + resource tests |
-| REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | Planned | 4 | Unit + matrix tests |
-| REQ-REPRO | Policy-driven allele/group/object selection, ordinary and nonstandard reproduction, germline/generation sites. | 11 | Planned | 4, 7 | Unit + integration + simulation |
+| REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | In progress | 4 | Unit + matrix tests |
+| REQ-REPRO | Policy-driven allele/group/object selection, ordinary and nonstandard reproduction, germline/generation sites. | 11 | In progress | 4, 7 | Unit + integration + simulation |
 | REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | Planned | 9 | Unit + integration |
 | REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | Planned | 6 | Unit + resource tests |
 | REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | Planned | 6 | Unit + resource tests |
@@ -113,7 +115,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | Planned | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
 | REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
-| REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | Planned | 4, 12 | Determinism + statistical tests |
+| REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | In progress | 4, 12 | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 14 | Round-trip + compatibility |
 | REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | In progress | 14 | Integration tests |
@@ -321,6 +323,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 4 - Deterministic inheritance and ordinary reproduction
 
+**Status:** Verified on 2026-06-06 for the Slice 4 acceptance criteria. Broader requirement families remain **In progress** where later slices add nonstandard reproduction, full compatibility, mutation during inheritance, gestation, non-ploidal objects, traces, resource tests, and statistical tolerances.
+
 **Objective:** Produce offspring genome versions through explicit parent roles and deterministic selection.
 
 **Deliverables**
@@ -355,6 +359,35 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Weighted transmission boundary and distribution sanity tests.
 - Random-stream separation regression test.
 - Parent immutability and offspring serialization tests.
+
+**Implemented**
+
+- `DeterministicRandomStream` implements specified SplitMix64 draws and stable FNV-1a stream-name derivation.
+- `NamedRandomStreams` derives independent streams from one root seed and caller-visible stream names.
+- `ReproductionParentRole`, `ReproductionPolicy`, `TransmissionWeight`, `ReproductionRequest`, `ReproductionResult`, and diagnostics model ordinary reproduction inputs and structured outcomes.
+- `OrdinaryReproductionService` produces immutable offspring `GenomeVersion` instances tied to the frozen system-definition version.
+- Parent roles are explicit and role-name based; the same `GenomeVersion` may appear in multiple distinct roles.
+- Equal transmission chooses among ranked parent allele entries through deterministic streams.
+- Weighted transmission supports per-role/group/gene/allele weights, excludes zero-weight alleles, and rejects negative, infinite, or NaN weights.
+- Variable ploidy is represented by `GeneDefinition.RequiredAlleleCount`; reproduction succeeds when contributor count exactly matches the gene requirement.
+- Lower-arity reproduction from more roles is accepted only when `ReproductionPolicy.ContributingRoleNames` explicitly selects the contributing roles; otherwise it is rejected as ambiguous.
+- Basic group selection preserves group coherence by producing offspring group states from frozen group definitions and required gene sets.
+- Compatibility policy stub reports fertile/success, sterile, and incompatible outcomes without implementing full biological compatibility.
+
+**Implementation simplification choices**
+
+- Ordinary reproduction only; no parthenogenesis, budding, fission, spawning, vegetative reproduction, germline sites, gestational effects, traces, non-ploidal inheritance, or mutation during inheritance.
+- Reproduction policy is an in-memory request object, not a serialized designer-authored policy resource.
+- Offspring version ancestry is summarized in `ChangeSummary`; the existing `GenomeVersion.ParentVersionId` remains unused for multi-parent offspring because it is single-parent-shaped from Slice 2.
+- Allele selection currently chooses from each contributing parent role independently; crossover/linkage and whole-object group selection are deferred.
+- Weighted-selection distribution has deterministic boundary coverage, but no statistical tolerance framework exists yet.
+
+**Not yet implemented**
+
+- Full compatibility genes/layers, fertile/sterile/inviable/hybrid morphology rules, development and gestation, and expanded reproduction modes.
+- Mutation, repair, acquired heritable changes, non-ploidal inheritance, traces, mosaicism, and chimerism.
+- Designer-authored reproduction policy resources or resource-test runner coverage.
+- Serialized reproduction requests/results or reproducibility packets beyond deterministic offspring genome serialization.
 
 **Requirements advanced:** REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-SERIAL.
 
@@ -461,21 +494,39 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Verification hardening for Codex Linux sandbox:
   - forced single-node/non-parallel MSBuild restore/build
   - switched test execution to `dotnet exec` on the built test DLL
+- Slice 2 genome lifecycle and baseline serialization:
+  - opaque external individual IDs
+  - immutable genome versions and replacement-based current copies
+  - ranked allele/group genome state with optional numeric allele values
+  - deterministic JSON and preliminary binary codecs over streams/buffers/text
+  - system-definition version compatibility hooks
+- Slice 3 group completeness, body-plan activation, and basic expression:
+  - required allele counts and initial expression strategy metadata
+  - group completeness evaluation with structured diagnostics
+  - body-plan availability and activation state separate from genome mutation
+  - explicit body-plan/developmental-phase/group/external expression context
+  - strict dominance, codominance, and numeric midpoint expression
+- Slice 4 deterministic ordinary reproduction:
+  - named deterministic random streams using FNV-1a derivation and SplitMix64 draws
+  - parent roles, reproduction policies, transmission weights, requests, results, and diagnostics
+  - ordinary offspring genome version creation from frozen definitions
+  - equal and weighted allele transmission, explicit multi-parent contribution, and ambiguity rejection
+  - sterile/incompatible compatibility-policy stub outcomes
 
 ### Not yet implemented
 
-- Runtime/domain genetics behavior beyond the Slice 0 core assembly marker.
-- Genome versions, current genome copies, individuals, expression, inheritance, mutation, serialization, and all later domain mechanics.
-- All core and optional serialization/storage modules.
+- Mutation, repair, acquired heritable changes, nonstandard reproduction, full compatibility, development/gestation, non-ploidal inheritance, traces, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Final serialization/storage modules beyond Slice 2 preliminary core codecs.
 - All Godot integration.
 - All resource tests.
-- Implementation tests beyond Slice 0 and Slice 1 coverage.
+- Statistical simulation/tolerance tests and reproducibility packets.
 
 ### Recorded simplifications
 
 - Slice 3 starts with dominance hierarchy, codominance, and numeric midpoint expression; advanced expression is deferred to Slice 8.
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
+- Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
 ## Test accounting
@@ -498,18 +549,44 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - duplicate, missing-reference, and dependency-cycle diagnostics
   - deterministic diagnostic ordering
   - migration hook execution before freeze
+- Slice 2 package-free implementation tests in `tests/Genomancy.Tests`:
+  - genome version collection-alias isolation
+  - current-copy edit, discard, and commit lifecycle
+  - no version spam for uncommitted current-copy changes
+  - JSON and binary genome round trips
+  - malformed and unknown-version serialization failures
+  - caller-supplied stream/buffer serialization boundaries
+- Slice 3 package-free implementation tests in `tests/Genomancy.Tests`:
+  - complete, absent, partial, wrong-ploidy, and dependency-failed group cases
+  - shared-group evaluation under distinct body-plan contexts
+  - activation state changes without genome version creation
+  - strict dominance, codominance, and numeric midpoint expression
+  - explicit expression context and opaque external facts
+  - active available body-plan validation
+- Slice 4 package-free implementation tests in `tests/Genomancy.Tests`:
+  - seeded diploid deterministic offspring serialization
+  - multi-parent and variable-ploidy contribution matrix
+  - ambiguous lower-arity rejection
+  - same individual/version in multiple parent roles
+  - zero-weight exclusion and invalid-weight rejection
+  - named random-stream separation
+  - sterile/incompatible compatibility outcomes and parent immutability
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
 
 - Slice 0 project-foundation acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 1 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 2 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 3 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 4 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, and REQ-VALIDATE have Slice 1 coverage only; each remains broader than this slice and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-VERSION, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
-- All requirement families in the requirements register except the limited Slice 0 and Slice 1 coverage noted above.
+- Requirement families not listed under partial coverage above remain without implementation tests.
+- Designer-authored resource tests do not exist yet for any requirement family.
 
 ### Test layers required by the project
 
@@ -527,7 +604,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 | OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
-| OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Select a specified cross-runtime deterministic algorithm; do not rely on `System.Random` behavior as a serialized contract. |
+| OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; statistical tolerance and reproducibility packet design remains under REQ-RANDOM later work. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
 | OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 14 | Keep provider outside core and evaluate platform support before selection. |
 
