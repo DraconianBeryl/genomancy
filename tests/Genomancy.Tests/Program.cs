@@ -1,6 +1,7 @@
 using System.Reflection;
 using Genomancy.Core;
 using Genomancy.Core.Definitions;
+using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
@@ -30,6 +31,12 @@ var tests = new (string Name, Action Test)[]
     ("Genome binary round trip preserves version state and ancestry", GenomeBinaryRoundTripPreservesVersionStateAndAncestry),
     ("Genome serializers reject malformed and unknown versions", GenomeSerializersRejectMalformedAndUnknownVersions),
     ("Genome serialization uses caller supplied streams and buffers", GenomeSerializationUsesCallerSuppliedStreamsAndBuffers),
+    ("Group completeness reports complete absent partial wrong ploidy and dependency failures", GroupCompletenessReportsExpectedStates),
+    ("Shared group evaluates under distinct body plan contexts", SharedGroupEvaluatesUnderDistinctBodyPlanContexts),
+    ("Body plan activation does not create genome versions", BodyPlanActivationDoesNotCreateGenomeVersions),
+    ("Expression strategies are deterministic and distinct", ExpressionStrategiesAreDeterministicAndDistinct),
+    ("Expression requires explicit body plan context and opaque external facts", ExpressionRequiresExplicitContextAndOpaqueExternalFacts),
+    ("Individual expression state requires at least one active available body plan", IndividualExpressionStateRequiresActiveAvailableBodyPlan),
 };
 
 var failures = new List<string>();
@@ -392,6 +399,210 @@ static void GenomeSerializationUsesCallerSuppliedStreamsAndBuffers()
     AssertGenomeVersionsEqual(version, GenomeBinaryCodec.ReadVersion(binaryStream, TestVersion()));
 }
 
+static void GroupCompletenessReportsExpectedStates()
+{
+    var definition = CreateExpressionDefinition().Freeze();
+    var complete = CreateExpressionGenomeState();
+
+    AssertEqual(
+        GroupCompletenessStatus.Complete,
+        GroupCompletenessEvaluator.Evaluate(definition, complete, Id("group.common")).Status);
+
+    AssertEqual(
+        GroupCompletenessStatus.Missing,
+        GroupCompletenessEvaluator.Evaluate(definition, new GenomeState([]), Id("group.common")).Status);
+
+    var partial = new GenomeState([new GenomeGroupState(Id("group.common"), [])]);
+    var partialResult = GroupCompletenessEvaluator.Evaluate(definition, partial, Id("group.common"));
+
+    AssertEqual(GroupCompletenessStatus.Incomplete, partialResult.Status);
+    AssertContainsExpressionDiagnostic(partialResult.Diagnostics, "GROUP_REQUIRED_GENE_MISSING");
+
+    var wrongPloidy = new GenomeState(
+        [
+            new GenomeGroupState(
+                Id("group.common"),
+                [
+                    new RankedAlleleSet(
+                        Id("gene.skin"),
+                        [
+                            new RankedAlleleEntry(Id("allele.skin.light"), 0),
+                        ]),
+                ]),
+        ]);
+    var wrongPloidyResult = GroupCompletenessEvaluator.Evaluate(definition, wrongPloidy, Id("group.common"));
+
+    AssertEqual(GroupCompletenessStatus.WrongPloidy, wrongPloidyResult.Status);
+    AssertContainsExpressionDiagnostic(wrongPloidyResult.Diagnostics, "GROUP_GENE_WRONG_PLOIDY");
+
+    var dependencyFailure = GroupCompletenessEvaluator.Evaluate(
+        definition,
+        new GenomeState(
+            [
+                new GenomeGroupState(
+                    Id("group.dependent"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.fur"),
+                            [
+                                new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                            ]),
+                    ]),
+            ]),
+        Id("group.dependent"));
+
+    AssertEqual(GroupCompletenessStatus.DependencyFailed, dependencyFailure.Status);
+    AssertContainsExpressionDiagnostic(dependencyFailure.Diagnostics, "GROUP_DEPENDENCY_FAILED");
+}
+
+static void SharedGroupEvaluatesUnderDistinctBodyPlanContexts()
+{
+    var definition = CreateExpressionDefinition().Freeze();
+    var genomeState = CreateExpressionGenomeState();
+    var expressionState = new BodyPlanExpressionState([Id("body.human"), Id("body.wolf")]);
+    var phase = DevelopmentalPhaseId.Parse("phase.adult");
+    var externalContext = new ExpressionExternalContext();
+
+    var human = BodyPlanAvailabilityEvaluator.Evaluate(
+        definition,
+        genomeState,
+        expressionState,
+        Id("body.human"),
+        phase,
+        externalContext);
+    var wolf = BodyPlanAvailabilityEvaluator.Evaluate(
+        definition,
+        genomeState,
+        expressionState,
+        Id("body.wolf"),
+        phase,
+        externalContext);
+
+    AssertEqual(BodyPlanAvailabilityStatus.Active, human.Status);
+    AssertEqual(BodyPlanAvailabilityStatus.Active, wolf.Status);
+    AssertTrue(human.GroupResults.Any(result => result.GroupId == Id("group.common")), "Human context must include shared common group.");
+    AssertTrue(wolf.GroupResults.Any(result => result.GroupId == Id("group.common")), "Wolf context must include shared common group.");
+}
+
+static void BodyPlanActivationDoesNotCreateGenomeVersions()
+{
+    var version = CreateGenomeVersion("genome.v1", null, "allele.skin.baseline");
+    var current = new CurrentGenomeCopy(version);
+    var state = new BodyPlanExpressionState();
+
+    state = state.Activate(Id("body.human"));
+    state = state.Deactivate(Id("body.human"));
+
+    AssertEqual(GenomeVersionId.Parse("genome.v1"), current.BaseVersion.Id);
+    AssertTrue(!current.HasUncommittedChanges, "Activation state changes must not mutate genome current copies.");
+}
+
+static void ExpressionStrategiesAreDeterministicAndDistinct()
+{
+    var context = new ExpressionEvaluationContext(
+        Id("body.human"),
+        DevelopmentalPhaseId.Parse("phase.adult"),
+        null,
+        new ExpressionExternalContext());
+    var alleleSet = new RankedAlleleSet(
+        Id("gene.skin"),
+        [
+            new RankedAlleleEntry(Id("allele.skin.dark"), 1, 0.9),
+            new RankedAlleleEntry(Id("allele.skin.light"), 0, 0.1),
+        ]);
+
+    var dominance = GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.skin"),
+            [Id("allele.skin.dark"), Id("allele.skin.light")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.StrictDominance),
+        alleleSet);
+    var codominance = GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.skin"),
+            [Id("allele.skin.dark"), Id("allele.skin.light")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.Codominance),
+        alleleSet);
+    var midpoint = GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.skin"),
+            [Id("allele.skin.dark"), Id("allele.skin.light")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.NumericMidpoint),
+        alleleSet);
+
+    AssertEqual(1, dominance.ExpressedAlleleIds.Count);
+    AssertEqual(Id("allele.skin.light"), dominance.ExpressedAlleleIds[0]);
+    AssertEqual(2, codominance.ExpressedAlleleIds.Count);
+    AssertEqual(0.5, midpoint.NumericValue);
+    AssertEqual(GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.skin"),
+            [Id("allele.skin.dark"), Id("allele.skin.light")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.NumericMidpoint),
+        alleleSet), midpoint);
+}
+
+static void ExpressionRequiresExplicitContextAndOpaqueExternalFacts()
+{
+    var facts = new List<KeyValuePair<string, string>>
+    {
+        new("moon", "full"),
+    };
+    var externalContext = new ExpressionExternalContext(facts);
+    facts.Add(new KeyValuePair<string, string>("mutation-after-context", "ignored"));
+
+    var context = new ExpressionEvaluationContext(
+        Id("body.human"),
+        DevelopmentalPhaseId.Parse("phase.adult"),
+        CreateExpressionCommonGroupState(),
+        externalContext);
+    var gene = new GeneDefinition(
+        Id("gene.skin"),
+        [Id("allele.skin.light"), Id("allele.skin.dark")],
+        requiredAlleleCount: 2);
+    var alleleSet = context.GroupState?.GeneAlleles.Single(set => set.GeneId == Id("gene.skin"))
+        ?? throw new InvalidOperationException("Expected group state.");
+
+    AssertEqual(1, externalContext.Facts.Count);
+    AssertEqual(Id("body.human"), context.BodyPlanId);
+    AssertEqual(DevelopmentalPhaseId.Parse("phase.adult"), context.DevelopmentalPhaseId);
+    AssertThrows<ArgumentNullException>(() => GeneExpressionEvaluator.Evaluate(null!, gene, alleleSet));
+}
+
+static void IndividualExpressionStateRequiresActiveAvailableBodyPlan()
+{
+    var definition = CreateExpressionDefinition().Freeze();
+    var genomeState = CreateExpressionGenomeState();
+    var phase = DevelopmentalPhaseId.Parse("phase.adult");
+    var externalContext = new ExpressionExternalContext();
+
+    AssertTrue(
+        !IndividualExpressionStateValidator.HasAtLeastOneActiveAvailableBodyPlan(
+            definition,
+            genomeState,
+            new BodyPlanExpressionState(),
+            phase,
+            externalContext),
+        "Dormant body plans must not satisfy active individual runtime state.");
+
+    AssertTrue(
+        IndividualExpressionStateValidator.HasAtLeastOneActiveAvailableBodyPlan(
+            definition,
+            genomeState,
+            new BodyPlanExpressionState([Id("body.human")]),
+            phase,
+            externalContext),
+        "At least one active complete body plan must satisfy individual runtime state.");
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -439,6 +650,76 @@ static GenomeGroupState CreateCommonGroupState(string alleleId, double? numericV
                 Id("gene.skin"),
                 [
                     new RankedAlleleEntry(Id(alleleId), 0, numericValue),
+                ]),
+        ]);
+}
+
+static SystemDefinitionBuilder CreateExpressionDefinition()
+{
+    var builder = new SystemDefinitionBuilder(TestVersion());
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.light")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.dark")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.fur.short")));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.skin"),
+        [Id("allele.skin.light"), Id("allele.skin.dark")],
+        requiredAlleleCount: 2,
+        expressionStrategy: GeneExpressionStrategy.StrictDominance));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.fur"),
+        [Id("allele.fur.short")],
+        requiredAlleleCount: 1,
+        expressionStrategy: GeneExpressionStrategy.Codominance));
+    builder.AddGroup(new GroupDefinition(Id("group.common"), geneIds: [Id("gene.skin")]));
+    builder.AddGroup(new GroupDefinition(Id("group.fur"), geneIds: [Id("gene.fur")]));
+    builder.AddGroup(new GroupDefinition(Id("group.dependent"), geneIds: [Id("gene.fur")], dependencyGroupIds: [Id("group.fur")]));
+    builder.AddBodyPlan(new BodyPlanDefinition(
+        Id("body.human"),
+        requiredGroupIds: [Id("group.common")],
+        optionalGroupIds: [Id("group.fur")]));
+    builder.AddBodyPlan(new BodyPlanDefinition(
+        Id("body.wolf"),
+        requiredGroupIds: [Id("group.fur")],
+        sharedGroupIds: [Id("group.common")]));
+    return builder;
+}
+
+static GenomeState CreateExpressionGenomeState()
+{
+    return new GenomeState(
+        [
+            CreateExpressionCommonGroupState(),
+            new GenomeGroupState(
+                Id("group.fur"),
+                [
+                    new RankedAlleleSet(
+                        Id("gene.fur"),
+                        [
+                            new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                        ]),
+                ]),
+            new GenomeGroupState(
+                Id("group.dependent"),
+                [
+                    new RankedAlleleSet(
+                        Id("gene.fur"),
+                        [
+                            new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                        ]),
+                ]),
+        ]);
+}
+
+static GenomeGroupState CreateExpressionCommonGroupState()
+{
+    return new GenomeGroupState(
+        Id("group.common"),
+        [
+            new RankedAlleleSet(
+                Id("gene.skin"),
+                [
+                    new RankedAlleleEntry(Id("allele.skin.light"), 0, 0.1),
+                    new RankedAlleleEntry(Id("allele.skin.dark"), 1, 0.9),
                 ]),
         ]);
 }
@@ -497,6 +778,15 @@ static void AssertContainsDiagnostic(ValidationResult result, string code)
     {
         throw new InvalidOperationException(
             $"Expected diagnostic '{code}'. Actual diagnostics: {DiagnosticsToString(result.Diagnostics)}");
+    }
+}
+
+static void AssertContainsExpressionDiagnostic(IEnumerable<ExpressionDiagnostic> diagnostics, string code)
+{
+    if (!diagnostics.Any(diagnostic => diagnostic.Code == code))
+    {
+        throw new InvalidOperationException(
+            $"Expected expression diagnostic '{code}'. Actual diagnostics: {string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"))}");
     }
 }
 

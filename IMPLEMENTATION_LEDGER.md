@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 3 - Group completeness, body-plan activation, and basic expression (next) |
+| Current implementation slice | Slice 4 - Deterministic inheritance and ordinary reproduction (next) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -64,6 +64,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Force single-node/non-parallel MSBuild restore/build in `scripts/verify.sh`. | Slice 1 implementation | Codex Linux sandbox breaks MSBuild's parallel restore graph probe, causing `_IsProjectRestoreSupported` to fail with `0 Error(s)`; `-m:1`, `RestoreBuildInParallel=false`, and `BuildInParallel=false` make the failure mode disappear and expose normal compiler/test output. | Accepted |
 | 2026-06-06 | Execute the compiled test DLL with `dotnet exec` instead of `dotnet run --no-build`. | Slice 1 implementation | Avoids sandbox-sensitive apphost path resolution after build. | Accepted |
 | 2026-06-06 | Implement Slice 2 binary serialization as a preliminary binary envelope containing the canonical Slice 2 JSON payload. | Slice 2 implementation | Satisfies stream/buffer binary round trips now while deferring a compact stable binary layout decision to the serialization finalization slice. | Accepted |
+| 2026-06-06 | Add `GeneDefinition.RequiredAlleleCount` and `GeneDefinition.ExpressionStrategy` as defaulted definition fields. | Slice 3 implementation | Enables initial ploidy/arity checks and expression strategies without breaking existing constructor call sites. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -92,8 +93,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-MODEL | Core object hierarchy from allele/value through nested population structures. | 4, 24 | In progress | 1-2 | Unit tests |
 | REQ-GENOME | Individuals, genomes, immutable permanent versions, and mutable/provisional current copies remain distinct. | 4.1-4.4, 16, 28.1 | In progress | 2 | Unit + invariant tests |
 | REQ-GENE | Categorical and numeric genes, alleles, ranked sets, and opt-in expression patterns. | 4.5-4.7, 5 | In progress | 2-3 | Unit + resource tests |
-| REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | Planned | 3, 8 | Unit + graph validation |
-| REQ-BODY | Authored body plans, active/dormant/primary states, families, activation, and temporary shapeshifting. | 4.12, 7.1-7.7 | Planned | 3 | Unit + integration |
+| REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | In progress | 3, 8 | Unit + graph validation |
+| REQ-BODY | Authored body plans, active/dormant/primary states, families, activation, and temporary shapeshifting. | 4.12, 7.1-7.7 | In progress | 3 | Unit + integration |
 | REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | Planned | 8 | Unit + serialization + resource tests |
 | REQ-DEVELOP | Developmental sequencing, gestation, post-birth requirements, and maternal/gestational effects. | 8 | Planned | 7 | Integration + resource tests |
 | REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | Planned | 7 | Unit + resource tests |
@@ -105,8 +106,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | Planned | 5 | Unit + policy coverage |
 | REQ-VERSION | Permanent version creation, commit policies, current-copy behavior, repair, reversion, and visibility. | 16 | In progress | 2, 5 | Unit + integration |
 | REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | Planned | 5 | Integration + negative tests |
-| REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | Planned | 3, 8 | Unit + resource tests |
-| REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | Planned | 3+ | Boundary tests |
+| REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | In progress | 3, 8 | Unit + resource tests |
+| REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | In progress | 3+ | Boundary tests |
 | REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | Planned | 10 | Unit + statistical tests |
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | Planned | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | Planned | 10 | Unit tests |
@@ -255,6 +256,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 3 - Group completeness, body-plan activation, and basic expression
 
+**Status:** Verified on 2026-06-06 for the Slice 3 acceptance criteria. Broader requirement families remain **In progress** where later slices add richer policies, generated complements, runtime variants, and advanced expression.
+
 **Objective:** Interpret a genome in a body-plan context using a deliberately limited first expression feature set.
 
 **Deliverables**
@@ -288,6 +291,31 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Body-plan activation and temporary shapeshift version-count tests.
 - Table-driven dominance, codominance, and numeric midpoint tests.
 - Boundary test proving external context is read-only opaque input.
+
+**Implemented**
+
+- `GeneDefinition` now carries defaulted `RequiredAlleleCount` and `ExpressionStrategy` fields.
+- `DevelopmentalPhaseId`, `ExpressionExternalContext`, and `ExpressionEvaluationContext` make body-plan, phase, group-state, and external facts explicit expression inputs.
+- `GroupCompletenessEvaluator` reports complete, missing, incomplete, wrong-ploidy, and dependency-failed group states with deterministic `ExpressionDiagnostic` entries.
+- `BodyPlanExpressionState` tracks active body plans separately from genome state and supports activation/deactivation without creating genome versions.
+- `BodyPlanAvailabilityEvaluator` returns active, dormant, unavailable, and incomplete body-plan availability against required, optional, and shared groups.
+- `IndividualExpressionStateValidator` checks the Slice 3 runtime invariant that at least one body plan is active and available.
+- `GeneExpressionEvaluator` implements strict dominance, codominance, and numeric midpoint strategies.
+
+**Implementation simplification choices**
+
+- Ploidy is represented by exact ranked allele entry count per gene through `RequiredAlleleCount`; variable ploidy mapping and lower-arity interpretation are deferred to Slice 4.
+- Activation state is only a set of active body-plan IDs; primary body-plan selection, timed activation, and temporary shapeshift policy details remain deferred.
+- Developmental phase and external context are passed through and preserved but are not yet consumed by the initial expression strategies.
+- Dependency checks cover direct frozen group dependencies already validated as acyclic; policy-dependent dependencies and generated complements remain deferred.
+- Numeric midpoint requires every ranked allele entry to carry a numeric value and does not yet validate numeric ranges against authored allele/gene policy.
+
+**Not yet implemented**
+
+- No polygenic traits, epistasis, pleiotropy, penetrance, variable expressivity, parent-of-origin behavior, generated complements, runtime variants, or advanced body-plan family rules.
+- No serialization for expression state or expression results yet.
+- No designer-authored resource tests; coverage remains in implementation tests.
+- No mutation, reproduction, repair, compatibility, developmental sequencing, or random-stream behavior.
 
 **Requirements advanced:** REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-GENE.
 
