@@ -6,7 +6,7 @@ This document consolidates the design requirements for a fantasy genetics system
 
 The system is designed as a **hard fantasy genetics framework**: it uses real genetics as a conceptual baseline, but abstracts away molecular biology and adds constrained support for fantasy morphologies, lineages, bloodlines, shapeshifting, hybridization, mutation, traces, population profiles, authoring workflows, and runtime-safe execution.
 
-This document describes system requirements, concepts, data structures, behavior, invariants, operating modes, and resource testing requirements. It does not prescribe implementation language, storage format, UI, networking model, database design, or engine integration.
+This document describes system requirements, concepts, data structures, behavior, invariants, operating modes, serialization requirements, storage boundaries, and resource testing requirements. It does not prescribe implementation language, UI, networking model, database design, or engine integration. The core library defines stable serialization formats but does not directly manage permanent storage.
 
 ---
 
@@ -110,6 +110,8 @@ For example, an individual may appear human while carrying dormant genetic group
 A body plan defines how genetic groups are interpreted into morphology, physiology, developmental sequence, reproduction, compatibility, and expression.
 
 The same genome may support multiple possible body plans.
+
+Authored body-plan definitions provide stable interpretation rules. Runtime-created body-plan variants may also exist as instance state when produced by frozen mutation, transformation, construction, or expression policies. This prevents designers from needing to pre-author every possible combination of modular features such as horns, wings, fins, gills, tails, extra limbs, or altered hindquarters.
 
 A body plan may be:
 
@@ -237,7 +239,7 @@ Frozen resources include:
 - gene definitions
 - allele definitions
 - group definitions
-- body-plan definitions
+- authored body-plan definitions
 - developmental phase definitions
 - expression rules
 - inheritance rules
@@ -253,6 +255,9 @@ Frozen resources include:
 - resource identifiers
 - linkage definitions
 - dependency definitions
+- body-plan variant construction rules
+
+Runtime freeze applies to authored definitions and interpretation rules, not to every possible expressed or mutated body configuration. Runtime may create derived body-plan variants as instance state if frozen policies define how those variants are constructed, interpreted, versioned, serialized, and validated.
 
 Runtime may still create and modify **instance state** governed by the frozen definition.
 
@@ -266,6 +271,7 @@ Runtime may allow, if frozen policies permit:
 - trace inheritance
 - trace activation
 - body-plan activation
+- runtime body-plan variant creation by frozen policy
 - generated complement creation
 - repair and reversion
 - population template sampling
@@ -275,7 +281,8 @@ Runtime must not allow:
 
 - adding a new gene definition
 - adding a new allele definition
-- changing body-plan definitions
+- changing authored body-plan definitions
+- changing body-plan variant construction rules
 - changing policy definitions
 - changing linkage definitions
 - changing group dependencies
@@ -284,9 +291,11 @@ Runtime must not allow:
 - altering the meaning of existing resource identifiers
 - changing how existing genomes are interpreted
 
+Runtime-created body-plan variants must be interpreted using frozen definitions and policies. They are instance data, not edits to the authored system definition.
+
 The core rule is:
 
-> Runtime may change genetic state inside individuals. Runtime may not change the rules that interpret genetic state.
+> Runtime may change genetic state and derived body-plan state inside individuals. Runtime may not change the rules that interpret genetic state.
 
 ## 3.4 Startup sequence: design mode
 
@@ -520,6 +529,8 @@ Traces support dramatic throwback descendants and mythic recurrence without requ
 
 A named developmental and physiological interpretation of genetic groups.
 
+A body plan may be an authored definition or a runtime-derived variant constructed under frozen policies.
+
 A body plan may define:
 
 - required groups
@@ -539,7 +550,28 @@ A body plan may define:
 - mutation participation
 - allowed generated-complement behavior
 
-## 4.13 Developmental phase
+## 4.13 Runtime-derived body-plan variant
+
+A runtime-derived body-plan variant is an instance-level body-plan configuration created during runtime by frozen policies.
+
+It is used for bodies that are valid under system rules but were not exhaustively authored as named body-plan definitions.
+
+A runtime-derived variant may represent modular or policy-created changes such as:
+
+- added wings
+- added horns
+- added fins or gills
+- altered tails
+- additional limbs
+- replacement hindquarters
+- generated complement morphology
+- mutation-created morphology packages
+
+A runtime-derived variant is not a system-definition edit. It must reference frozen definitions, groups, genes, policies, and construction rules.
+
+Runtime-derived variants may be stored in genome versions, current genome copies, individuals, templates, or save data as permitted by policy.
+
+## 4.14 Developmental phase
 
 A stage in a body plan’s development.
 
@@ -558,7 +590,7 @@ A body plan may define a sequence of developmental phases such as:
 
 The exact granularity is setting-defined.
 
-## 4.14 Mutation
+## 4.15 Mutation
 
 A genome modification event.
 
@@ -580,7 +612,7 @@ In this system, mutation is a broad category and may include:
 
 Temporary expression changes are not mutations unless policy commits them as genome modifications.
 
-## 4.15 Mutation policy
+## 4.16 Mutation policy
 
 A policy defining how mutation events target, select, modify, version, and commit genome changes.
 
@@ -601,7 +633,7 @@ Mutation policies may refer to:
 - repair targets
 - versioning rules
 
-## 4.16 Population genetic profile template
+## 4.17 Population genetic profile template
 
 A named immutable statistical profile used to generate random genomes without explicit ancestry.
 
@@ -957,6 +989,51 @@ Multiple body plans may share many groups and differ mainly in:
 - physiology details
 
 For example, a full dragon and shoulder dragon may be separate body plans with shared groups.
+
+## 7.8 Runtime-derived body-plan variants
+
+The runtime system must support mutation or construction of body-plan variants as instance state when frozen policies allow it.
+
+This requirement exists because fully freezing body-plan definitions without any runtime variant mechanism would force designers to pre-author every possible combination of modular morphology features. Features such as horn number and placement, wing count and type, fins, gills, extra limbs, tails, altered hindquarters, and similar morphology packages can create combinatorial explosion if every combination must be declared as a separate authored body plan.
+
+A runtime-derived body-plan variant may be created by:
+
+- mutation policy
+- generated complement policy
+- shapeshifting completion policy
+- magical gene splicing policy
+- acquired heritable state policy
+- external event using frozen mutation/construction rules
+- template or genome generation policy, if permitted
+
+A runtime-derived body-plan variant may add, remove, replace, or reinterpret morphology packages, provided that the operation is valid under frozen definitions and policies.
+
+Examples of valid runtime-derived body-plan variants include:
+
+- a ferret gaining two pairs of bat wings
+- a ferret gaining a unicorn horn
+- a ferret gaining the back end of a seal
+- a body gaining fins or gills
+- a body gaining additional arms or legs
+- a body gaining altered tail morphology
+
+A runtime-derived body-plan variant does not automatically make the individual a chimera. Chimerism requires multiple genetically distinct material lines or regionally distinct genetic material. A body-plan variant may be a single integrated morphology interpreted from one genome state.
+
+Runtime-derived body-plan variants must have:
+
+- stable identity within the owning genome or individual state
+- deterministic construction from frozen policies and input data
+- serializable structure
+- validation against frozen body-plan construction rules
+- explicit versioning behavior when permanent
+- clear distinction from temporary expression state
+- clear distinction from authored body-plan definitions
+
+A runtime-derived body-plan variant may be temporary, current-copy-only, or permanent depending on mutation and versioning policy.
+
+If permanent, the variant must be recorded as part of the relevant genome version or individual genetic state.
+
+If temporary, it must not create a genome version unless policy commits it.
 
 ---
 
@@ -3109,45 +3186,51 @@ Simulation creates new versions.
 
 In runtime mode, the system definition is frozen after load and validation.
 
-Runtime may create genetic state but may not redefine genetic rules.
+Runtime may create genetic state and runtime-derived body-plan variants, but may not redefine authored genetic rules, authored body-plan definitions, or body-plan variant construction rules.
 
-## 28.4 Temporary expression is not permanent mutation
+## 28.4 Runtime-derived body-plan variants are instance state
+
+Runtime-derived body-plan variants are not edits to the system definition.
+
+They must be validated and interpreted using frozen definitions and policies.
+
+## 28.5 Temporary expression is not permanent mutation
 
 Temporary body-plan activation, shapeshifting, or group activation must not automatically create genome versions.
 
-## 28.5 Expression requires interpretation context
+## 28.6 Expression requires interpretation context
 
 Genes and groups do not express in isolation.
 
 Expression depends on body plan, developmental phase, group dependencies, ploidy, and policies.
 
-## 28.6 External facts remain external
+## 28.7 External facts remain external
 
 Genes do not internally know social, historical, prophetic, or genealogical context.
 
 External systems may provide triggers or write results into the genome.
 
-## 28.7 Ploidy interpretation must be unambiguous
+## 28.8 Ploidy interpretation must be unambiguous
 
 When a body plan uses fewer allele sets than are present, ranking or selection policy must provide an unambiguous result.
 
-## 28.8 Mutation requires policy
+## 28.9 Mutation requires policy
 
 Mutation behavior must be defined by policy.
 
 The system should not freely invent unconstrained mutation effects.
 
-## 28.9 Copy-number changes require constraint
+## 28.10 Copy-number changes require constraint
 
 Copy-number changes may be represented, but spontaneous unconstrained generation of duplicate organs, limbs, heads, or systems should require external or constrained policies.
 
-## 28.10 Population templates are not individuals
+## 28.11 Population templates are not individuals
 
 A template is a statistical distribution, not a genome.
 
 A template-derived individual must be generated before individual-level mechanics apply.
 
-## 28.11 Tests must not mutate shared authored resources
+## 28.12 Tests must not mutate shared authored resources
 
 Tests should run against immutable resource inputs and produce isolated outputs.
 
@@ -3178,7 +3261,19 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 6. Activate target body plan temporarily or permanently according to expression policy.
 7. If permanent mutation occurs, create genome version according to versioning policy.
 
-## 29.3 Trace activation at conception
+## 29.3 Runtime body-plan variant creation
+
+1. Identify base body plan.
+2. Identify mutation, construction, or external event source.
+3. Select frozen body-plan variant construction policy.
+4. Select eligible morphology packages, group changes, or generated complement changes.
+5. Validate compatibility with base body plan, genome state, ploidy, and group dependencies.
+6. Construct derived body-plan variant as instance data.
+7. Decide whether variant is temporary, current-copy-only, or permanent.
+8. If permanent, create or update the appropriate genome version according to versioning policy.
+9. Serialize variant data as part of the owning individual/genome/template state if required.
+
+## 29.4 Trace activation at conception
 
 1. External system determines trace activation condition is met.
 2. Trace object is selected from inherited non-ploidal objects.
@@ -3187,7 +3282,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 5. Mutation/versioning policy determines whether this creates a permanent genome version.
 6. Offspring genome is finalized.
 
-## 29.4 Repair
+## 29.5 Repair
 
 1. Identify damaged or altered current genome state.
 2. Select repair policy.
@@ -3201,7 +3296,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 4. Apply value-selection/overwrite mode.
 5. Decide whether repair affects current copy or creates new permanent version.
 
-## 29.5 Population generation
+## 29.6 Population generation
 
 1. Select population template or template group.
 2. If group, select template according to weights or blending mode.
@@ -3212,7 +3307,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 7. Construct individual genome.
 8. Assign initial body plan and expression state.
 
-## 29.6 Population generation simulation
+## 29.7 Population generation simulation
 
 1. Start from immutable template version.
 2. Apply inheritance approximation.
@@ -3222,7 +3317,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 6. Update allele/group/non-ploidal rates.
 7. Create new immutable template version.
 
-## 29.7 Template group simulation
+## 29.8 Template group simulation
 
 1. Simulate each contained template or subgroup.
 2. Apply cross-template blend rates.
@@ -3231,7 +3326,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 5. Preserve nested structure unless policy merges it.
 6. Create new immutable template group version.
 
-## 29.8 Runtime load and freeze
+## 29.9 Runtime load and freeze
 
 1. Select runtime mode.
 2. Load runtime package/system definition.
@@ -3241,7 +3336,7 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 6. Load saved instance state.
 7. Run genetic operations using frozen policies.
 
-## 29.9 Design export
+## 29.10 Design export
 
 1. Select design mode.
 2. Load editable resource graph.
@@ -3260,7 +3355,8 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 | Gene definitions | Mutable | Frozen |
 | Allele definitions | Mutable | Frozen |
 | Group definitions | Mutable | Frozen |
-| Body-plan definitions | Mutable | Frozen |
+| Authored body-plan definitions | Mutable | Frozen |
+| Runtime-derived body-plan variants | Creatable/testable | Creatable by frozen policy as instance state |
 | Developmental phase definitions | Mutable | Frozen |
 | Expression policies | Mutable | Frozen |
 | Mutation policies | Mutable | Frozen |
@@ -3282,7 +3378,110 @@ Tests should run against immutable resource inputs and produce isolated outputs.
 
 ---
 
-# 31. Interfaceable out-of-scope systems
+# 31. Serialization and storage boundary
+
+## 31.1 Core serialization requirement
+
+The core library must define stable serialization formats at multiple granularity layers.
+
+The required core serialization formats are:
+
+- JSON
+- binary
+
+Serialization must be stable enough to support:
+
+- saved individual genomes
+- genome versions
+- current genome copies, when persisted
+- runtime-derived body-plan variants
+- non-ploidal inheritance objects
+- traces
+- mutation histories, when persisted
+- population templates
+- template groups
+- resource test fixtures and outputs
+- runtime packages
+- reproducible test failure packets
+
+## 31.2 Serialization granularity
+
+Serialization should be supported at multiple layers rather than only at the whole-system level.
+
+Serializable layers may include:
+
+- individual gene or allele definitions
+- groups
+- authored body-plan definitions
+- runtime-derived body-plan variants
+- policies
+- genome versions
+- current genome copies
+- individuals
+- population templates
+- template groups
+- complete system definitions
+- runtime packages
+- test definitions and fixtures
+- simulation outputs
+
+## 31.3 Stable identifiers and compatibility
+
+Serialized data must use stable resource identifiers for authored definitions.
+
+Serialized runtime-derived body-plan variants must reference frozen definitions and policies rather than embedding mutable authoring definitions.
+
+Serialized genomes and templates should record the system-definition version they depend on.
+
+If serialized data is loaded under a different system-definition version, migration or compatibility validation may be required.
+
+## 31.4 Core storage boundary
+
+The core library must not interact directly with permanent storage.
+
+The core library may read from and write to streams, buffers, byte arrays, text data, or equivalent abstraction layers, but it must not require or own a database, filesystem layout, save-game repository, cloud service, asset database, or other persistence mechanism.
+
+Permanent storage belongs outside the core library.
+
+## 31.5 Optional standard storage modules
+
+The project may provide optional standard non-core modules that add permanent storage support.
+
+These modules must depend on the core library rather than being required by it.
+
+The initial implementation should include optional modules for:
+
+- SQLite storage
+- JSON file storage
+- custom binary file storage
+
+These modules are especially useful for building tests, running test suites, storing fixtures, saving generated genomes, and comparing serialized outputs.
+
+## 31.6 Storage module responsibilities
+
+A storage module may provide:
+
+- loading and saving serialized system definitions
+- loading and saving runtime packages
+- loading and saving genomes and genome versions
+- loading and saving population templates and template groups
+- loading and saving resource tests and fixtures
+- indexing saved resources
+- transaction support, if applicable
+- test fixture setup and teardown helpers
+- migration orchestration around serialized data
+
+A storage module must not redefine core genetics behavior.
+
+## 31.7 Test usage
+
+Tests may use optional storage modules to verify serialization, persistence boundaries, migration behavior, and fixture loading.
+
+Core resource tests should still be able to run without permanent storage by using in-memory serialized data.
+
+---
+
+# 32. Interfaceable out-of-scope systems
 
 The following are not defined by this genetics system but may interact with it:
 
@@ -3314,7 +3513,7 @@ These systems may provide inputs, triggers, rates, or externally authored mutati
 
 ---
 
-# 32. Consolidated architecture summary
+# 33. Consolidated architecture summary
 
 The system is a generalized fantasy inheritance and expression framework where:
 
@@ -3331,9 +3530,11 @@ The system is a generalized fantasy inheritance and expression framework where:
 - immutable genome versions support repair, reversion, audit, and hard-system consistency
 - population templates provide statistical genome generation and population simulation without explicit ancestry
 - template groups support nested population structure and cross-template blending
+- the core library defines stable JSON and binary serialization while leaving permanent storage to non-core modules
 - resource testing is a first-class feature for validating authored content
 - design mode allows system creation and mutation
-- runtime mode freezes system definitions immediately after load
+- runtime mode freezes authored system definitions immediately after load
+- runtime may create derived body-plan variants under frozen construction and mutation policies
 
 The central hard-system boundary is:
 
