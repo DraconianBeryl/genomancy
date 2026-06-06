@@ -1,0 +1,6 @@
+.dotnet-work/
+.godot-work/
+.godot/
+
+bin/
+obj/

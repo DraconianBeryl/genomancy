@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{0C05A384-D9E6-46B7-9B08-BA84E84F5AD6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Genomancy.Core", "src\Genomancy.Core\Genomancy.Core.csproj", "{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{837667A9-B4D7-4A6A-880E-1D4DC9F5AC95}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Genomancy.Tests", "tests\Genomancy.Tests\Genomancy.Tests.csproj", "{CED5BCC8-DE97-4521-A615-1A2AAF465919}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CED5BCC8-DE97-4521-A615-1A2AAF465919}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CED5BCC8-DE97-4521-A615-1A2AAF465919}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CED5BCC8-DE97-4521-A615-1A2AAF465919}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CED5BCC8-DE97-4521-A615-1A2AAF465919}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F79F4BEE-6439-4DFB-802B-8B2FE16B5E0E} = {0C05A384-D9E6-46B7-9B08-BA84E84F5AD6}
+		{CED5BCC8-DE97-4521-A615-1A2AAF465919} = {837667A9-B4D7-4A6A-880E-1D4DC9F5AC95}
+	EndGlobalSection
+EndGlobal

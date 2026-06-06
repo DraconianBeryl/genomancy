@@ -10,8 +10,8 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-17 |
-| Current implementation slice | Slice 0 - Project foundation (not started) |
+| Last ledger update | 2026-06-18 |
+| Current implementation slice | Slice 1 - Definition kernel, modes, IDs, and validation (not started) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -77,6 +77,10 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-17 | Bound resource metadata and add resource tags. | Project clarification | Metadata is limited to Genomancy needs; tags may participate in policy, test, validation, reachability, and selection/matching behavior. | Accepted |
 | 2026-06-17 | Replace audit terminology with runtime history diagnostics. | Project clarification | Genome history is for runtime genetic-state changes, including designer-authored past events in genome records, not design-change audit trails. | Accepted |
 | 2026-06-17 | Clarify reports as transient outputs. | Project clarification | Reports are produced for callers/tools/CI/storage modules; the core runner does not store report history. | Accepted |
+| 2026-06-06 | Use .NET SDK 9.0.111 and target `net9.0` for the initial core/test projects. | Slice 0 implementation | Establishes current build target; may be revisited if a later Godot adapter requires a narrower target. | Accepted |
+| 2026-06-06 | Use repo-local ignored `.dotnet-work/` directories for .NET, NuGet, XDG, and MSBuild writable state during verification. | Slice 0 implementation | Makes verification work in restricted Linux/Codex sandbox environments without relying on writable home directories or shared `/tmp` paths. | Accepted |
+| 2026-06-18 | Use single-node MSBuild verification and execute the built test DLL with `dotnet exec`. | Cherry-pick remediation from later implementation attempt | Avoids Codex/Linux sandbox sensitivity in parallel restore/build probing and generated native apphost execution while preserving build and smoke-test coverage. | Accepted |
+| 2026-06-18 | Record generated native apphost execution as toolchain technical debt. | Verification investigation | Managed build output and smoke tests are verified, but generated native launchers must be separately revalidated before any CLI/package/release workflow depends on them. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -91,7 +95,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-007 | Core persistence APIs target streams/buffers/text, not paths or databases. | Preserves the required storage boundary. | Accepted |
 | ARC-008 | Serialized authored references use stable IDs; runtime variants reference frozen definitions and policies. | Preserves compatibility and avoids embedding mutable authoring definitions. | Accepted |
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
-| ARC-010 | The exact target framework, binary encoding, and SQLite provider remain open until Slice 0/serialization refinement. | These choices require compatibility and maintenance evaluation. | Open |
+| ARC-010 | Binary encoding and SQLite provider remain open until serialization/storage refinement. | These choices require compatibility and maintenance evaluation beyond Slice 0. | Open |
 | ARC-011 | Optional storage modules load and save supplied serialized resources but do not own external content-management responsibilities. | Keeps Genomancy focused on genetics resource loading/validation and leaves authoritative corpus management to version control, asset pipelines, editor databases, or game-specific systems. | Accepted |
 | ARC-012 | Runtime package export/import is complete-system serialization in core; persisted-data handling belongs to storage modules or external tools. | Preserves stable core formats without making core responsible for files, databases, archives, repositories, or distribution packages. | Accepted |
 | ARC-013 | Migrations are save-compatibility transforms between system-definition versions, preferably policy-defined and optionally host-callback-backed. | Supports game updates without requiring every save to embed a full genetics system definition. | Accepted |
@@ -99,6 +103,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-015 | Golden-sample approval, report-history storage, and source-control changed-resource discovery are external workflow concerns. | Keeps the core test runner focused on deterministic execution, candidate outputs, diagnostics, and transient reports. | Accepted |
 | ARC-016 | Godot editor integration is a separate deferred plugin from Godot runtime support. | Keeps runtime adapter scope narrow and avoids moving editor workflows into core. | Accepted |
 | ARC-017 | Resource tags are Genomancy metadata and may be used by tag-aware policies, tests, validation, reachability, and selection. | Provides structured selection/matching without broad asset metadata management. | Accepted |
+| ARC-018 | The initial core and test projects target `net9.0`. | .NET SDK 9.0.111 and Godot 4.6.2 are installed locally; the core has no Godot dependency, so retargeting remains possible if the later Godot adapter or deployment target requires it. | Accepted |
 
 ## Requirements register
 
@@ -143,6 +148,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 The next five slices are deliberately detailed. Slices 5 and later are progressively less specific and must be refined before entering **In progress**. Refinement may split a slice, but it must preserve requirement IDs and record scope changes above.
 
 ### Slice 0 - Project foundation
+
+**Status:** Verified on 2026-06-06.
 
 **Objective:** Establish a buildable, testable C# repository with dependency direction that protects the engine-neutral core.
 
@@ -398,34 +405,63 @@ A separate Godot editor plugin may later support authoring workflows, resource e
 - Initial persistent requirements/progress ledger.
 - Requirements-family IDs and source-section traceability.
 - Initial architecture constraints and incrementally refined implementation plan.
+- Slice 0 project foundation:
+  - `Genomancy.sln`
+  - `src/Genomancy.Core`
+  - `tests/Genomancy.Tests`
+  - shared build configuration in `Directory.Build.props`
+  - formatting defaults in `.editorconfig`
+  - repo ignore rules in `.gitignore`
+  - architecture note in `docs/architecture.md`
+  - documented verification command in `README.md`
+  - verification script in `scripts/verify.sh`
+- Minimal engine-neutral core assembly marker.
+- Package-free implementation smoke test harness with core dependency inspection.
+- Repo-local ignored `.dotnet-work/` verification state for restricted Linux/Codex sandbox execution.
+- Single-node verification with direct `dotnet exec` of the built test DLL.
+- Documentation of the current generated native apphost issue and its verification/release implications.
 
 ### Not yet implemented
 
-- All C# projects and runtime/domain behavior.
+- Runtime/domain genetics behavior beyond the Slice 0 core assembly marker.
 - All core and optional serialization/storage modules.
 - All Godot integration.
-- All implementation and resource tests.
+- All resource tests.
+- Implementation tests beyond the Slice 0 smoke/dependency checks.
 
 ### Recorded simplifications
 
 - Slice 3 starts with dominance hierarchy, codominance, and numeric midpoint expression; advanced expression is deferred to Slice 8.
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
+- Slice 0 verification executes the built test DLL directly rather than the generated native apphost.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
+
+### Toolchain technical debt
+
+- In the current Gentoo source-built .NET SDK 9.0.111 environment, generated Linux apphost execution has failed after a successful build. The observed generated launcher contained `Genomancy.Tests.dll` at one placeholder location but retained the `c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2` apphost placeholder at the runtime-used application path slot.
+- Direct managed execution with `dotnet exec tests/Genomancy.Tests/bin/Debug/net9.0/Genomancy.Tests.dll` passes, so the issue is treated as a toolchain/native-launcher risk rather than a Genomancy core or test-harness failure.
+- Until this is revalidated with the target SDK/runtime/package combination, project verification must not rely on `dotnet run --no-build` or generated native apphost launch behavior.
+- Future CLI tools, standalone executables, CI packaging, and release workflows must add explicit generated-launcher checks before claiming native apphost support.
 
 ## Test accounting
 
 ### Tests present
 
-- None. The repository had no implementation or test project at ledger creation.
+- Slice 0 package-free implementation smoke tests in `tests/Genomancy.Tests`:
+  - core assembly exposes stable name
+  - core assembly is marked Godot independent
+  - core assembly has no forbidden Godot, SQLite, or test-framework dependencies
+- Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
 
-- None yet.
+- Slice 0 project-foundation acceptance criteria are verified by `scripts/verify.sh`.
+- REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 
 ### Requirements without tests
 
-- All requirement families in the requirements register.
+- All requirement families in the requirements register except the limited Slice 0 core-boundary coverage noted above.
 
 ### Test layers required by the project
 
@@ -438,7 +474,7 @@ A separate Godot editor plugin may later support authoring workflows, resource e
 
 | ID | Decision or risk | Needed by | Current handling |
 |---|---|---|---|
-| OPEN-001 | Exact .NET target framework and supported Godot version range. | Slice 0 | Evaluate current Godot C# compatibility before project creation. |
+| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 15 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
 | OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use a versioned preliminary codec, then stabilize in Slice 14. |
 | OPEN-003 | Definition immutability mechanism: immutable records/collections, generated snapshots, or both. | Slice 1 | Prototype against retained-reference mutation tests. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
@@ -446,6 +482,7 @@ A separate Godot editor plugin may later support authoring workflows, resource e
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Select a specified cross-runtime deterministic algorithm; do not rely on `System.Random` behavior as a serialized contract. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
 | OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 14 | Keep provider outside core and evaluate platform support before selection. |
+| OPEN-009 | Generated native apphost reliability under the target SDK/runtime/package combination. | Any CLI, standalone executable, CI package, or release workflow that depends on native launchers | Verification uses direct `dotnet exec` managed execution for now; add a native-launcher regression check before depending on apphost execution. |
 
 ## Ledger update checklist
 
