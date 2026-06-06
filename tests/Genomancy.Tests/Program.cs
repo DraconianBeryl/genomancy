@@ -3,6 +3,7 @@ using Genomancy.Core;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Mutation;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
@@ -45,6 +46,12 @@ var tests = new (string Name, Action Test)[]
     ("Weighted transmission excludes zero weights and validates finite weights", WeightedTransmissionExcludesZeroWeightsAndValidatesFiniteWeights),
     ("Named random streams prevent unrelated gene perturbation", NamedRandomStreamsPreventUnrelatedGenePerturbation),
     ("Reproduction reports compatibility outcomes and preserves parents", ReproductionReportsCompatibilityOutcomesAndPreservesParents),
+    ("Current only mutation diverges without committing a version", CurrentOnlyMutationDivergesWithoutCommittingVersion),
+    ("Committed mutation creates immutable child version", CommittedMutationCreatesImmutableChildVersion),
+    ("Mutation policy rejects protected targets and invalid alleles", MutationPolicyRejectsProtectedTargetsAndInvalidAlleles),
+    ("Numeric copy count and structural mutations update current state", NumericCopyCountAndStructuralMutationsUpdateCurrentState),
+    ("Repair and revert restore current genome state", RepairAndRevertRestoreCurrentGenomeState),
+    ("External mutation source is explicit and policy controlled", ExternalMutationSourceIsExplicitAndPolicyControlled),
 };
 
 var failures = new List<string>();
@@ -804,6 +811,207 @@ static void ReproductionReportsCompatibilityOutcomesAndPreservesParents()
     AssertEqual(fatherBefore, GenomeJsonCodec.WriteVersionToText(father));
 }
 
+static void CurrentOnlyMutationDivergesWithoutCommittingVersion()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var current = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+
+    var result = GenomeMutationService.Apply(
+        definition,
+        current,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark"))]));
+
+    AssertEqual(GenomeMutationResultStatus.AppliedToCurrent, result.Status);
+    AssertEqual(null, result.CommittedVersion);
+    AssertTrue(current.HasUncommittedChanges, "Current-only mutation must not commit automatically.");
+    AssertEqual(GenomeVersionId.Parse("genome.mutation.v1"), current.BaseVersion.Id);
+    AssertEqual(Id("allele.skin.dark"), CurrentAlleles(current, Id("group.common"), Id("gene.skin"))[0].AlleleId);
+    AssertEqual(Id("allele.skin.light"), current.BaseVersion.State.Groups[0].GeneAlleles[0].Entries[0].AlleleId);
+}
+
+static void CommittedMutationCreatesImmutableChildVersion()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var current = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+
+    var result = GenomeMutationService.Apply(
+        definition,
+        current,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.Commit,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark"))],
+            GenomeVersionId.Parse("genome.mutation.v2"),
+            "skin mutation"));
+
+    AssertEqual(GenomeMutationResultStatus.Committed, result.Status);
+    AssertTrue(result.CommittedVersion is not null, "Committed mutation must return a new version.");
+    var committed = result.CommittedVersion ?? throw new InvalidOperationException("Expected committed version.");
+
+    AssertEqual(GenomeVersionId.Parse("genome.mutation.v2"), committed.Id);
+    AssertEqual(GenomeVersionId.Parse("genome.mutation.v1"), committed.ParentVersionId);
+    AssertEqual("skin mutation", committed.ChangeSummary);
+    AssertTrue(!current.HasUncommittedChanges, "Committed mutation becomes the new base current state.");
+    AssertThrows<ArgumentException>(() => current.Commit(GenomeVersionId.Parse("genome.mutation.v2")));
+}
+
+static void MutationPolicyRejectsProtectedTargetsAndInvalidAlleles()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var protectedCurrent = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+    var protectedResult = GenomeMutationService.Apply(
+        definition,
+        protectedCurrent,
+        new GenomeMutationPolicy(protectedGeneIds: [Id("gene.skin")]),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark"))]));
+
+    AssertEqual(GenomeMutationResultStatus.Rejected, protectedResult.Status);
+    AssertContainsMutationDiagnostic(protectedResult.Diagnostics, "MUTATION_TARGET_PROTECTED");
+    AssertTrue(!protectedCurrent.HasUncommittedChanges, "Rejected mutation must leave current state unchanged.");
+
+    var invalidAlleleCurrent = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+    var invalidAlleleResult = GenomeMutationService.Apply(
+        definition,
+        invalidAlleleCurrent,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.fur.short"))]));
+
+    AssertEqual(GenomeMutationResultStatus.Rejected, invalidAlleleResult.Status);
+    AssertContainsMutationDiagnostic(invalidAlleleResult.Diagnostics, "MUTATION_ALLELE_NOT_ALLOWED");
+}
+
+static void NumericCopyCountAndStructuralMutationsUpdateCurrentState()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var current = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+
+    var result = GenomeMutationService.Apply(
+        definition,
+        current,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [
+                GenomeMutationOperation.UpdateNumericValue(Id("group.common"), Id("gene.skin"), 0, 0.75),
+                GenomeMutationOperation.SetCopyCount(Id("group.common"), Id("gene.skin"), 2),
+                GenomeMutationOperation.AddGroup(new GenomeGroupState(
+                    Id("group.fur"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.fur"),
+                            [
+                                new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                            ]),
+                    ])),
+            ]));
+
+    AssertEqual(GenomeMutationResultStatus.AppliedToCurrent, result.Status);
+    AssertEqual(2, CurrentAlleles(current, Id("group.common"), Id("gene.skin")).Count);
+    AssertEqual(0.75, CurrentAlleles(current, Id("group.common"), Id("gene.skin"))[0].NumericValue);
+    AssertTrue(current.CurrentState.Groups.Any(group => group.GroupId == Id("group.fur")), "Structural add-group mutation must add group state.");
+
+    var removeResult = GenomeMutationService.Apply(
+        definition,
+        current,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.RemoveGroup(Id("group.fur"))]));
+
+    AssertEqual(GenomeMutationResultStatus.AppliedToCurrent, removeResult.Status);
+    AssertTrue(!current.CurrentState.Groups.Any(group => group.GroupId == Id("group.fur")), "Structural remove-group mutation must remove group state.");
+}
+
+static void RepairAndRevertRestoreCurrentGenomeState()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var current = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+
+    _ = GenomeMutationService.Apply(
+        definition,
+        current,
+        new GenomeMutationPolicy(),
+        new GenomeMutationRequest(
+            MutationSourceKind.InternalPolicy,
+            "policy.test",
+            MutationApplicationMode.CurrentOnly,
+            [
+                GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark")),
+                GenomeMutationOperation.AddGroup(new GenomeGroupState(
+                    Id("group.fur"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.fur"),
+                            [
+                                new RankedAlleleEntry(Id("allele.fur.short"), 0),
+                            ]),
+                    ])),
+            ]));
+
+    var repairGene = GenomeMutationService.RepairFromBase(current, Id("group.common"), Id("gene.skin"));
+
+    AssertEqual(GenomeMutationResultStatus.Repaired, repairGene.Status);
+    AssertEqual(Id("allele.skin.light"), CurrentAlleles(current, Id("group.common"), Id("gene.skin"))[0].AlleleId);
+    AssertTrue(current.CurrentState.Groups.Any(group => group.GroupId == Id("group.fur")), "Gene repair should not remove unrelated groups.");
+
+    var revert = GenomeMutationService.RevertCurrent(current);
+
+    AssertEqual(GenomeMutationResultStatus.Reverted, revert.Status);
+    AssertTrue(!current.HasUncommittedChanges, "Revert must discard all current-only changes.");
+    AssertTrue(!current.CurrentState.Groups.Any(group => group.GroupId == Id("group.fur")), "Revert must restore base group set.");
+}
+
+static void ExternalMutationSourceIsExplicitAndPolicyControlled()
+{
+    var definition = CreateMutationDefinition().Freeze();
+    var blockedCurrent = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+    var blocked = GenomeMutationService.Apply(
+        definition,
+        blockedCurrent,
+        new GenomeMutationPolicy(allowExternalRequests: false),
+        new GenomeMutationRequest(
+            MutationSourceKind.ExternalRequest,
+            "spell.polymorph",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark"))]));
+
+    AssertEqual(GenomeMutationResultStatus.Rejected, blocked.Status);
+    AssertContainsMutationDiagnostic(blocked.Diagnostics, "MUTATION_EXTERNAL_SOURCE_BLOCKED");
+
+    var allowedCurrent = new CurrentGenomeCopy(CreateMutationGenomeVersion());
+    var allowed = GenomeMutationService.Apply(
+        definition,
+        allowedCurrent,
+        new GenomeMutationPolicy(allowExternalRequests: true),
+        new GenomeMutationRequest(
+            MutationSourceKind.ExternalRequest,
+            "spell.polymorph",
+            MutationApplicationMode.CurrentOnly,
+            [GenomeMutationOperation.ReplaceAllele(Id("group.common"), Id("gene.skin"), 0, Id("allele.skin.dark"))]));
+
+    AssertEqual(GenomeMutationResultStatus.AppliedToCurrent, allowed.Status);
+    AssertEqual(Id("allele.skin.dark"), CurrentAlleles(allowedCurrent, Id("group.common"), Id("gene.skin"))[0].AlleleId);
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -1018,6 +1226,58 @@ static ReproductionResult Reproduce(
         ExternalIndividualId.Parse("external:offspring")));
 }
 
+static SystemDefinitionBuilder CreateMutationDefinition()
+{
+    var builder = new SystemDefinitionBuilder(TestVersion());
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.light")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.skin.dark")));
+    builder.AddAllele(new AlleleDefinition(Id("allele.fur.short")));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.skin"),
+        [Id("allele.skin.light"), Id("allele.skin.dark")],
+        requiredAlleleCount: 1));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.fur"),
+        [Id("allele.fur.short")],
+        requiredAlleleCount: 1));
+    builder.AddGroup(new GroupDefinition(Id("group.common"), geneIds: [Id("gene.skin")]));
+    builder.AddGroup(new GroupDefinition(Id("group.fur"), geneIds: [Id("gene.fur")]));
+    builder.AddBodyPlan(new BodyPlanDefinition(Id("body.mutation-test"), requiredGroupIds: [Id("group.common")], optionalGroupIds: [Id("group.fur")]));
+    return builder;
+}
+
+static GenomeVersion CreateMutationGenomeVersion()
+{
+    return new GenomeVersion(
+        GenomeVersionId.Parse("genome.mutation.v1"),
+        TestVersion(),
+        ExternalIndividualId.Parse("external:mutation-target"),
+        new GenomeState(
+            [
+                new GenomeGroupState(
+                    Id("group.common"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.skin"),
+                            [
+                                new RankedAlleleEntry(Id("allele.skin.light"), 0, 0.25),
+                            ]),
+                    ]),
+            ]));
+}
+
+static IReadOnlyList<RankedAlleleEntry> CurrentAlleles(
+    CurrentGenomeCopy current,
+    ResourceId groupId,
+    ResourceId geneId)
+{
+    return current.CurrentState.Groups
+        .Single(group => group.GroupId == groupId)
+        .GeneAlleles
+        .Single(set => set.GeneId == geneId)
+        .Entries;
+}
+
 static IReadOnlyList<RankedAlleleEntry> OffspringAlleles(
     ReproductionResult result,
     ResourceId groupId,
@@ -1107,6 +1367,15 @@ static void AssertContainsReproductionDiagnostic(IEnumerable<ReproductionDiagnos
     {
         throw new InvalidOperationException(
             $"Expected reproduction diagnostic '{code}'. Actual diagnostics: {string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"))}");
+    }
+}
+
+static void AssertContainsMutationDiagnostic(IEnumerable<GenomeMutationDiagnostic> diagnostics, string code)
+{
+    if (!diagnostics.Any(diagnostic => diagnostic.Code == code))
+    {
+        throw new InvalidOperationException(
+            $"Expected mutation diagnostic '{code}'. Actual diagnostics: {string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"))}");
     }
 }
 

@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 5 - Mutation, commit policy, repair, and acquired heritable changes (next; refine before implementation) |
+| Current implementation slice | Slice 6 - Non-ploidal inheritance and traces (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -66,6 +66,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Implement Slice 2 binary serialization as a preliminary binary envelope containing the canonical Slice 2 JSON payload. | Slice 2 implementation | Satisfies stream/buffer binary round trips now while deferring a compact stable binary layout decision to the serialization finalization slice. | Accepted |
 | 2026-06-06 | Add `GeneDefinition.RequiredAlleleCount` and `GeneDefinition.ExpressionStrategy` as defaulted definition fields. | Slice 3 implementation | Enables initial ploidy/arity checks and expression strategies without breaking existing constructor call sites. | Accepted |
 | 2026-06-06 | Use named deterministic random streams derived from a root seed with FNV-1a stream-name hashing and SplitMix64 draws. | Slice 4 implementation | Gives cross-runtime deterministic stream separation without relying on `System.Random` as a serialized behavior contract. | Accepted |
+| 2026-06-06 | Refine Slice 5 to a current-copy mutation service with allele, numeric, copy-count, and group add/remove operations. | Slice 5 implementation | Covers first mutation/repair lifecycle without introducing full mutation event history, serialized mutation policy resources, or metaphysical source semantics. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -105,9 +106,9 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | Planned | 9 | Unit + integration |
 | REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | Planned | 6 | Unit + resource tests |
 | REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | Planned | 6 | Unit + resource tests |
-| REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | Planned | 5 | Unit + policy coverage |
+| REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | In progress | 5 | Unit + policy coverage |
 | REQ-VERSION | Permanent version creation, commit policies, current-copy behavior, repair, reversion, and visibility. | 16 | In progress | 2, 5 | Unit + integration |
-| REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | Planned | 5 | Integration + negative tests |
+| REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | In progress | 5 | Integration + negative tests |
 | REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | In progress | 3, 8 | Unit + resource tests |
 | REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | In progress | 3+ | Boundary tests |
 | REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | Planned | 10 | Unit + statistical tests |
@@ -393,9 +394,66 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 5 - Mutation, commit policy, repair, and acquired heritable changes
 
-Refine before implementation. Expected outcomes are policy-controlled mutation events across allele, numeric, copy-number, and structural targets; protected-target enforcement; explicit temporary/current/permanent commit behavior; immutable version creation; repair/reversion; and external-event entry points that do not import metaphysical logic into core.
+**Status:** Verified on 2026-06-06 for the refined Slice 5 acceptance criteria. Broader requirement families remain **In progress** where later slices add full mutation event history, resource-authored mutation policies, non-ploidal mutation, traces, and advanced structural policies.
 
-**Requirements targeted:** REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-GROUP.
+**Objective:** Apply controlled heritable genome changes through explicit mutation requests while preserving the permanent/current lifecycle.
+
+**Deliverables**
+
+- Define mutation requests with explicit source kind, source ID, application mode, operations, optional commit version ID, and change summary.
+- Implement first operation set: allele replacement, numeric value update, copy-count adjustment, group add, and group remove.
+- Validate mutation targets against frozen definitions and current genome state.
+- Enforce protected group/gene targets through mutation policy.
+- Support current-only mutation without creating permanent genome versions.
+- Support committed mutation that creates an immutable child genome version through `CurrentGenomeCopy.Commit`.
+- Implement repair from the current base version for a group or gene.
+- Implement revert/discard for all current-only changes.
+- Expose external mutation sources as opaque caller-supplied labels without identity, metaphysics, spell-system, or social semantics.
+
+**Acceptance criteria**
+
+- Temporary mutation changes current state and leaves base version history untouched.
+- Committed mutation creates a distinct immutable child version with parent-version linkage.
+- Protected targets and invalid allele choices are rejected before state changes.
+- Numeric, copy-count, and structural group mutations update current state deterministically.
+- Repair restores the requested group/gene from the current base version without touching unrelated current changes.
+- Revert restores the complete current state from the base version.
+- External mutation requests are explicit and policy-controlled.
+
+**Tests**
+
+- Current-only mutation divergence without version creation.
+- Committed mutation child-version creation and parent linkage.
+- Protected-target and invalid-allele rejection tests.
+- Numeric update, copy-count adjustment, group add, and group remove tests.
+- Repair and revert lifecycle tests.
+- External source allowed/blocked boundary tests.
+
+**Implemented**
+
+- `GenomeMutationOperation`, `GenomeMutationTarget`, `GenomeMutationRequest`, `GenomeMutationPolicy`, `GenomeMutationResult`, diagnostics, and status enums.
+- `GenomeMutationService.Apply` for current-only and committed mutation application over `CurrentGenomeCopy`.
+- `GenomeMutationService.RepairFromBase` for base-version group/gene repair.
+- `GenomeMutationService.RevertCurrent` for full current-copy discard/reversion.
+- Protected group/gene policy checks and external-source allow/deny policy checks.
+- Definition-aware validation for gene existence, group state, gene state, allele rank, and allowed allele IDs.
+
+**Implementation simplification choices**
+
+- Mutation policy is an in-memory request-time policy object, not a serialized designer-authored resource.
+- Mutation source is an opaque source-kind/source-ID pair; no spell, magic, identity, possession, soul, or social semantics are represented in core.
+- Copy-count mutation extends by duplicating the highest-ranked current allele and truncates by rank; richer copy-number policies are deferred.
+- Structural mutation is limited to adding/removing whole group state; subgroup surgery, generated complements, protected subtargets, and authored structural constraints remain deferred.
+- Repair uses the current base version only; arbitrary historical repair/reversion and full audit trails remain deferred.
+- Mutation operations are applied deterministically in request order after whole-request validation.
+
+**Not yet implemented**
+
+- Serialized mutation requests/results, mutation event history, mutation probability/timing/randomness, policy-authored target selection, protected target hierarchies, structural body-plan validation, non-ploidal object mutation, trace mutation/degradation, and statistical mutation simulation.
+- Resource-test coverage for mutation policies.
+- Repair from arbitrary historical versions or partial repair with conflict reporting.
+
+**Requirements advanced:** REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-GROUP.
 
 ### Slice 6 - Non-ploidal inheritance and traces
 
@@ -512,10 +570,17 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - ordinary offspring genome version creation from frozen definitions
   - equal and weighted allele transmission, explicit multi-parent contribution, and ambiguity rejection
   - sterile/incompatible compatibility-policy stub outcomes
+- Slice 5 mutation, repair, and acquired heritable changes:
+  - mutation targets, operations, policy, request/result, diagnostics, and source labels
+  - allele replacement, numeric value update, copy-count adjustment, group add, and group remove
+  - protected group/gene enforcement and allowed-allele validation
+  - current-only mutation, committed mutation, base-version repair, and current-state reversion
+  - external mutation source allow/deny boundary
 
 ### Not yet implemented
 
-- Mutation, repair, acquired heritable changes, nonstandard reproduction, full compatibility, development/gestation, non-ploidal inheritance, traces, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Nonstandard reproduction, full compatibility, development/gestation, non-ploidal inheritance, traces, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Final serialization/storage modules beyond Slice 2 preliminary core codecs.
 - All Godot integration.
 - All resource tests.
@@ -525,6 +590,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 - Slice 3 starts with dominance hierarchy, codominance, and numeric midpoint expression; advanced expression is deferred to Slice 8.
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
+- Slice 5 starts with request-time mutation policy objects and current-copy operations; serialized policy resources, mutation history, random mutation timing, and arbitrary historical repair are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -571,6 +637,13 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - zero-weight exclusion and invalid-weight rejection
   - named random-stream separation
   - sterile/incompatible compatibility outcomes and parent immutability
+- Slice 5 package-free implementation tests in `tests/Genomancy.Tests`:
+  - current-only mutation divergence without version creation
+  - committed mutation child-version creation and parent linkage
+  - protected-target and invalid-allele rejection
+  - numeric update, copy-count adjustment, group add, and group remove
+  - repair and revert lifecycle behavior
+  - external source allow/deny policy boundary
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -580,8 +653,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 2 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 3 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 4 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 5 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-VERSION, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
