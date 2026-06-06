@@ -4,6 +4,7 @@ public sealed record ReproductionPolicy
 {
     public ReproductionPolicy(
         ReproductionCompatibility compatibility = ReproductionCompatibility.Fertile,
+        ReproductionMode mode = ReproductionMode.Ordinary,
         IEnumerable<string>? contributingRoleNames = null,
         IEnumerable<TransmissionWeight>? transmissionWeights = null,
         bool inheritNonPloidalObjects = false,
@@ -19,6 +20,7 @@ public sealed record ReproductionPolicy
         }
 
         Compatibility = compatibility;
+        Mode = mode;
         ContributingRoleNames = (contributingRoleNames ?? [])
             .Select(roleName =>
             {
@@ -42,6 +44,8 @@ public sealed record ReproductionPolicy
     }
 
     public ReproductionCompatibility Compatibility { get; }
+
+    public ReproductionMode Mode { get; }
 
     public IReadOnlyList<string> ContributingRoleNames { get; }
 

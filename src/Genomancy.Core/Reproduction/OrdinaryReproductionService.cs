@@ -32,8 +32,21 @@ public static class OrdinaryReproductionService
                 diagnostics: [Diagnostic("REPRODUCTION_INCOMPATIBLE", "policy/compatibility", "Reproduction policy reported incompatible parents.")]);
         }
 
+        if (request.Policy.Compatibility == ReproductionCompatibility.Inviable)
+        {
+            return new ReproductionResult(
+                ReproductionResultStatus.Inviable,
+                diagnostics: [Diagnostic("REPRODUCTION_INVIABLE", "policy/compatibility", "Reproduction policy reported inviable offspring.")]);
+        }
+
         var rolesByName = request.ParentRoles.ToDictionary(role => role.Name, StringComparer.Ordinal);
         var contributingRoles = ResolveContributingRoles(request, rolesByName);
+
+        if (request.Policy.Mode == ReproductionMode.ClonalCopy)
+        {
+            return ReproduceClonalCopy(request, contributingRoles);
+        }
+
         var streams = new NamedRandomStreams(request.RandomSeed);
         var groups = new List<GenomeGroupState>();
         var reproductionDiagnostics = new List<ReproductionDiagnostic>();
@@ -124,6 +137,37 @@ public static class OrdinaryReproductionService
                     request.RandomSeed,
                     request.Policy.IncludeInactiveNonPloidalObjects,
                     request.Policy.InheritedTraceDegradationSteps).State
+                : new HeritableObjectState());
+
+        return new ReproductionResult(ReproductionResultStatus.Success, offspring);
+    }
+
+    private static ReproductionResult ReproduceClonalCopy(
+        ReproductionRequest request,
+        IReadOnlyList<ReproductionParentRole> contributingRoles)
+    {
+        if (contributingRoles.Count != 1)
+        {
+            return new ReproductionResult(
+                ReproductionResultStatus.InvalidRequest,
+                diagnostics:
+                [
+                    Diagnostic(
+                        "REPRODUCTION_CLONE_REQUIRES_ONE_CONTRIBUTOR",
+                        "policy/contributingRoles",
+                        "Clonal copy reproduction requires exactly one contributing role."),
+                ]);
+        }
+
+        var source = contributingRoles[0];
+        var offspring = new GenomeVersion(
+            request.OffspringVersionId,
+            request.Definition.Version,
+            request.OffspringIndividualId,
+            source.GenomeVersion.State,
+            changeSummary: $"clone={source.Name}:{source.GenomeVersion.Id}",
+            heritableObjects: request.Policy.InheritNonPloidalObjects
+                ? source.GenomeVersion.HeritableObjects
                 : new HeritableObjectState());
 
         return new ReproductionResult(ReproductionResultStatus.Success, offspring);

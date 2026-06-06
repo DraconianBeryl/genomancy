@@ -5,4 +5,5 @@ public enum ReproductionCompatibility
     Fertile,
     Sterile,
     Incompatible,
+    Inviable,
 }

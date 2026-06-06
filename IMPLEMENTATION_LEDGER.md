@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 7 - Compatibility, development, and expanded reproduction (next; refine before implementation) |
+| Current implementation slice | Slice 8 - Advanced expression, generated complements, and runtime variants (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -68,6 +68,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Use named deterministic random streams derived from a root seed with FNV-1a stream-name hashing and SplitMix64 draws. | Slice 4 implementation | Gives cross-runtime deterministic stream separation without relying on `System.Random` as a serialized behavior contract. | Accepted |
 | 2026-06-06 | Refine Slice 5 to a current-copy mutation service with allele, numeric, copy-count, and group add/remove operations. | Slice 5 implementation | Covers first mutation/repair lifecycle without introducing full mutation event history, serialized mutation policy resources, or metaphysical source semantics. | Accepted |
 | 2026-06-06 | Add `HeritableObjectState` to `GenomeVersion` for non-ploidal objects and traces. | Slice 6 implementation | Integrates non-ploidal and trace state into immutable versioning and existing genome JSON/binary codecs without adding a separate persistence boundary. | Accepted |
+| 2026-06-06 | Refine Slice 7 to compatibility metadata, inviable reproduction, clonal-copy reproduction, development timelines, gestation context, and numeric maternal effects. | Slice 7 implementation | Advances compatibility/development/expanded reproduction while deferring full hybrid morphology construction, nonstandard reproduction families, and gestational simulation. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -100,8 +101,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | In progress | 3, 8 | Unit + graph validation |
 | REQ-BODY | Authored body plans, active/dormant/primary states, families, activation, and temporary shapeshifting. | 4.12, 7.1-7.7 | In progress | 3 | Unit + integration |
 | REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | Planned | 8 | Unit + serialization + resource tests |
-| REQ-DEVELOP | Developmental sequencing, gestation, post-birth requirements, and maternal/gestational effects. | 8 | Planned | 7 | Integration + resource tests |
-| REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | Planned | 7 | Unit + resource tests |
+| REQ-DEVELOP | Developmental sequencing, gestation, post-birth requirements, and maternal/gestational effects. | 8 | In progress | 7 | Integration + resource tests |
+| REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | In progress | 7 | Unit + resource tests |
 | REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | In progress | 4 | Unit + matrix tests |
 | REQ-REPRO | Policy-driven allele/group/object selection, ordinary and nonstandard reproduction, germline/generation sites. | 11 | In progress | 4, 7 | Unit + integration + simulation |
 | REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | Planned | 9 | Unit + integration |
@@ -516,9 +517,58 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 7 - Compatibility, development, and expanded reproduction
 
-Refine before implementation. Expected outcomes are compatibility layers and fertile/sterile/inviable results, hybrid morphology inputs, developmental and gestational sequences, maternal effects, nonstandard reproduction modes, and germline/generation-site behavior.
+**Status:** Verified on 2026-06-06 for the refined Slice 7 acceptance criteria. Broader requirement families remain **In progress** where later slices add full compatibility resources, gestational simulation, hybrid morphology construction, and additional nonstandard reproduction modes.
 
-**Requirements targeted:** REQ-COMPAT, REQ-DEVELOP, REQ-REPRO.
+**Objective:** Add the first compatibility/development boundaries and one expanded reproduction mode without moving external identity or gestational systems into core.
+
+**Deliverables**
+
+- Represent compatibility evaluations with fertile, sterile, incompatible, and inviable outcomes.
+- Represent hybrid morphology input weights as stable body-plan ID references.
+- Add inviable reproduction outcome handling.
+- Add clonal-copy reproduction mode with explicit single-contributor validation.
+- Represent development stages, ordered development plans, and gestation context.
+- Validate that plans requiring gestation receive explicit gestation context.
+- Apply simple numeric maternal effects to genome state without mutating source versions.
+
+**Acceptance criteria**
+
+- Compatibility rules can produce layered outcomes with hybrid morphology contribution metadata.
+- Inviable reproduction returns a structured inviable result and does not create offspring.
+- Clonal-copy reproduction creates offspring by copying one source genome state without allele recombination.
+- Invalid clonal-copy requests with multiple contributors are rejected.
+- Development timelines are deterministically ordered and report missing gestation context.
+- Maternal effects return a new genome state and leave source versions unchanged.
+
+**Tests**
+
+- Compatibility evaluation with hybrid body-plan contribution metadata.
+- Inviable reproduction outcome test.
+- Clonal-copy success and invalid multi-contributor tests.
+- Development timeline ordering and missing-gestation validation tests.
+- Maternal numeric-effect immutability test.
+
+**Implemented**
+
+- `CompatibilityEvaluation`, `CompatibilityRule`, `CompatibilityService`, and `HybridMorphologyContribution`.
+- `ReproductionCompatibility.Inviable` and `ReproductionResultStatus.Inviable`.
+- `ReproductionMode` and `ReproductionPolicy.Mode`.
+- `OrdinaryReproductionService` support for inviable outcomes and clonal-copy reproduction.
+- `DevelopmentStageDefinition`, `DevelopmentPlan`, `GestationContext`, `MaternalEffect`, `DevelopmentTimeline`, and `DevelopmentService`.
+
+**Implementation simplification choices**
+
+- Compatibility rules are in-memory and role-name based; no resource-authored compatibility graph exists yet.
+- Hybrid morphology is represented as weighted body-plan references only; no morphology construction or expression integration yet.
+- Clonal copy is the only expanded reproduction mode in this slice.
+- Gestation context is opaque and caller-supplied; core does not model containers, pregnancy state, birth, or external entity lifecycles.
+- Maternal effects are limited to deterministic numeric deltas on allele entries.
+
+**Not yet implemented**
+
+- Full compatibility layers, sterile/fertile policy resources, hybrid body construction, inviable embryo state, gestation simulation, post-birth requirements, maternal effect timing, germline/generation-site behavior, parthenogenesis, budding, fission, spawning, vegetative reproduction, and resource-test coverage.
+
+**Requirements advanced:** REQ-COMPAT, REQ-DEVELOP, REQ-REPRO.
 
 ### Slice 8 - Advanced expression, generated complements, and runtime variants
 
@@ -635,10 +685,16 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - deterministic weighted non-ploidal object inheritance
   - trace activation, strength replacement, degradation, and reproduction inheritance
   - JSON and preliminary binary codec integration for non-ploidal objects and traces
+- Slice 7 compatibility, development, and expanded reproduction:
+  - compatibility evaluations/rules and hybrid morphology contribution metadata
+  - inviable reproduction outcomes
+  - clonal-copy reproduction mode
+  - development stages, plans, gestation context, timelines, and maternal numeric effects
 
 ### Not yet implemented
 
-- Nonstandard reproduction, full compatibility, development/gestation, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Final serialization/storage modules beyond Slice 2 preliminary core codecs.
@@ -652,6 +708,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
 - Slice 5 starts with request-time mutation policy objects and current-copy operations; serialized policy resources, mutation history, random mutation timing, and arbitrary historical repair are deferred.
 - Slice 6 stores non-ploidal/trace state directly on genome versions; authored non-ploidal definitions and trace effect policies are deferred.
+- Slice 7 starts compatibility/development with in-memory rules and opaque gestation context; full authored resources and gestational simulation are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -711,6 +768,12 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - trace activation, replacement, and degradation
   - ordinary reproduction integration for non-ploidal objects and traces
   - JSON and binary serialization round trips for heritable object state
+- Slice 7 package-free implementation tests in `tests/Genomancy.Tests`:
+  - compatibility evaluation and hybrid morphology contribution metadata
+  - inviable reproduction outcome
+  - clonal-copy reproduction success and invalid multi-contributor rejection
+  - development timeline ordering and missing gestation context
+  - maternal numeric-effect immutability
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -722,8 +785,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 4 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 5 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 6 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 7 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 

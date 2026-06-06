@@ -5,5 +5,6 @@ public enum ReproductionResultStatus
     Success,
     Sterile,
     Incompatible,
+    Inviable,
     InvalidRequest,
 }

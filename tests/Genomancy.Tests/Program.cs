@@ -1,6 +1,8 @@
 using System.Reflection;
+using Genomancy.Core.Compatibility;
 using Genomancy.Core;
 using Genomancy.Core.Definitions;
+using Genomancy.Core.Development;
 using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
 using Genomancy.Core.Inheritance;
@@ -58,6 +60,11 @@ var tests = new (string Name, Action Test)[]
     ("Trace state supports activation replacement and degradation", TraceStateSupportsActivationReplacementAndDegradation),
     ("Reproduction can inherit non ploidal objects and traces", ReproductionCanInheritNonPloidalObjectsAndTraces),
     ("Genome serialization preserves non ploidal objects and traces", GenomeSerializationPreservesNonPloidalObjectsAndTraces),
+    ("Compatibility service reports layered outcomes and hybrid morphology", CompatibilityServiceReportsLayeredOutcomesAndHybridMorphology),
+    ("Reproduction reports inviable compatibility outcome", ReproductionReportsInviableCompatibilityOutcome),
+    ("Clonal copy reproduction creates offspring without allele recombination", ClonalCopyReproductionCreatesOffspringWithoutAlleleRecombination),
+    ("Development timeline enforces gestation ordering requirements", DevelopmentTimelineEnforcesGestationOrderingRequirements),
+    ("Maternal effects update numeric genome state without mutating source", MaternalEffectsUpdateNumericGenomeStateWithoutMutatingSource),
 };
 
 var failures = new List<string>();
@@ -1175,6 +1182,113 @@ static void GenomeSerializationPreservesNonPloidalObjectsAndTraces()
 
     AssertEqual(version.HeritableObjects, jsonRoundTrip.HeritableObjects);
     AssertEqual(version.HeritableObjects, binaryRoundTrip.HeritableObjects);
+}
+
+static void CompatibilityServiceReportsLayeredOutcomesAndHybridMorphology()
+{
+    var roles = new[]
+    {
+        new ReproductionParentRole("mother", CreateParentGenome("parent.mother", "external:mother", "allele.skin.light")),
+        new ReproductionParentRole("father", CreateParentGenome("parent.father", "external:father", "allele.skin.dark")),
+    };
+    var evaluation = CompatibilityService.Evaluate(
+        roles,
+        [
+            new CompatibilityRule(
+                ReproductionCompatibility.Fertile,
+                requiredRoleNames: ["mother", "father"],
+                hybridMorphologyContributions:
+                [
+                    new HybridMorphologyContribution(Id("body.human"), 0.5),
+                    new HybridMorphologyContribution(Id("body.wolf"), 0.5),
+                ],
+                "hybrid morphology"),
+        ]);
+
+    AssertEqual(ReproductionCompatibility.Fertile, evaluation.Compatibility);
+    AssertEqual(2, evaluation.HybridMorphologyContributions.Count);
+    AssertEqual("hybrid morphology", evaluation.Reason);
+}
+
+static void ReproductionReportsInviableCompatibilityOutcome()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var result = Reproduce(
+        definition,
+        44,
+        [
+            new ReproductionParentRole("mother", CreateParentGenome("parent.mother", "external:mother", "allele.skin.light")),
+            new ReproductionParentRole("father", CreateParentGenome("parent.father", "external:father", "allele.skin.dark")),
+        ],
+        new ReproductionPolicy(ReproductionCompatibility.Inviable));
+
+    AssertEqual(ReproductionResultStatus.Inviable, result.Status);
+    AssertContainsReproductionDiagnostic(result.Diagnostics, "REPRODUCTION_INVIABLE");
+}
+
+static void ClonalCopyReproductionCreatesOffspringWithoutAlleleRecombination()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var source = CreateParentGenome("parent.clone", "external:clone-source", "allele.skin.light", "allele.skin.dark", includeFur: false);
+    var result = Reproduce(
+        definition,
+        78,
+        [new ReproductionParentRole("source", source)],
+        new ReproductionPolicy(
+            mode: ReproductionMode.ClonalCopy,
+            contributingRoleNames: ["source"]));
+
+    AssertEqual(ReproductionResultStatus.Success, result.Status);
+    var offspring = result.OffspringVersion ?? throw new InvalidOperationException("Expected offspring.");
+    AssertEqual(source.State, offspring.State);
+    AssertEqual(TestVersion(), offspring.SystemDefinitionVersion);
+
+    var invalid = Reproduce(
+        definition,
+        78,
+        [
+            new ReproductionParentRole("one", source),
+            new ReproductionParentRole("two", source),
+        ],
+        new ReproductionPolicy(mode: ReproductionMode.ClonalCopy));
+
+    AssertEqual(ReproductionResultStatus.InvalidRequest, invalid.Status);
+    AssertContainsReproductionDiagnostic(invalid.Diagnostics, "REPRODUCTION_CLONE_REQUIRES_ONE_CONTRIBUTOR");
+}
+
+static void DevelopmentTimelineEnforcesGestationOrderingRequirements()
+{
+    var plan = new DevelopmentPlan(
+        [
+            new DevelopmentStageDefinition(Id("stage.birth"), 2),
+            new DevelopmentStageDefinition(Id("stage.gestation"), 1, requiresGestation: true),
+            new DevelopmentStageDefinition(Id("stage.adult"), 3),
+        ]);
+    var missingGestation = DevelopmentService.CreateTimeline(plan);
+    var withGestation = DevelopmentService.CreateTimeline(plan, new GestationContext("container.mother", elapsedSteps: 4));
+
+    AssertTrue(!missingGestation.IsValid, "Timeline without required gestation context must be invalid.");
+    AssertTrue(missingGestation.Diagnostics.Contains("DEVELOPMENT_GESTATION_REQUIRED"), "Missing gestation diagnostic expected.");
+    AssertTrue(withGestation.IsValid, "Timeline with gestation context must be valid.");
+    AssertEqual(Id("stage.gestation"), withGestation.Stages[0].Id);
+    AssertEqual("container.mother", withGestation.GestationContext?.ContainerId);
+}
+
+static void MaternalEffectsUpdateNumericGenomeStateWithoutMutatingSource()
+{
+    var source = CreateMutationGenomeVersion();
+    var affected = DevelopmentService.ApplyMaternalEffects(
+        source.State,
+        [new MaternalEffect(Id("group.common"), Id("gene.skin"), 0, 0.5)]);
+    var affectedValue = affected.Groups
+        .Single(group => group.GroupId == Id("group.common"))
+        .GeneAlleles
+        .Single(set => set.GeneId == Id("gene.skin"))
+        .Entries[0]
+        .NumericValue;
+
+    AssertEqual(0.75, affectedValue);
+    AssertEqual(0.25, source.State.Groups[0].GeneAlleles[0].Entries[0].NumericValue);
 }
 
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
