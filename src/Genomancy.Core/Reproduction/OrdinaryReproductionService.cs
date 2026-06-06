@@ -1,5 +1,6 @@
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Inheritance;
 using Genomancy.Core.Randomness;
 
 namespace Genomancy.Core.Reproduction;
@@ -116,7 +117,14 @@ public static class OrdinaryReproductionService
             new GenomeState(groups),
             changeSummary: string.Join(
                 ";",
-                contributingRoles.Select(role => $"{role.Name}={role.GenomeVersion.Id}")));
+                contributingRoles.Select(role => $"{role.Name}={role.GenomeVersion.Id}")),
+            heritableObjects: request.Policy.InheritNonPloidalObjects
+                ? NonPloidalInheritanceService.Inherit(
+                    contributingRoles,
+                    request.RandomSeed,
+                    request.Policy.IncludeInactiveNonPloidalObjects,
+                    request.Policy.InheritedTraceDegradationSteps).State
+                : new HeritableObjectState());
 
         return new ReproductionResult(ReproductionResultStatus.Success, offspring);
     }

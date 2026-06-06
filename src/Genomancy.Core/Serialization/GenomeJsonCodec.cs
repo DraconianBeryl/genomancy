@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Inheritance;
 
 namespace Genomancy.Core.Serialization;
 
@@ -91,7 +92,28 @@ public static class GenomeJsonCodec
                                     entry.NumericValue))
                                 .ToArray()))
                         .ToArray()))
-                .ToArray());
+                .ToArray(),
+            new HeritableObjectsEnvelope(
+                version.HeritableObjects.NonPloidalObjects
+                    .OrderBy(value => value.Id)
+                    .Select(value => new NonPloidalObjectEnvelope(
+                        value.Id.Value,
+                        value.Kind.ToString(),
+                        value.NumericValue,
+                        value.TextValue,
+                        value.IsActive,
+                        value.TransmissionWeight))
+                    .ToArray(),
+                version.HeritableObjects.Traces
+                    .OrderBy(trace => trace.Id)
+                    .Select(trace => new TraceEnvelope(
+                        trace.Id.Value,
+                        trace.SourceId.Value,
+                        trace.Strength,
+                        trace.IsActive,
+                        trace.Age,
+                        trace.DegradationPerStep))
+                    .ToArray()));
     }
 
     private static GenomeVersion FromEnvelope(
@@ -128,7 +150,22 @@ public static class GenomeJsonCodec
                         entry.Rank,
                         entry.NumericValue))))))),
             string.IsNullOrWhiteSpace(envelope.ParentVersionId) ? null : GenomeVersionId.Parse(envelope.ParentVersionId),
-            envelope.ChangeSummary ?? string.Empty);
+            envelope.ChangeSummary ?? string.Empty,
+            new HeritableObjectState(
+                (envelope.HeritableObjects?.NonPloidalObjects ?? []).Select(value => new NonPloidalObjectState(
+                    ResourceId.Parse(Required(value.Id, "nonPloidalObject.id")),
+                    Enum.Parse<NonPloidalObjectKind>(Required(value.Kind, "nonPloidalObject.kind")),
+                    value.NumericValue,
+                    value.TextValue ?? string.Empty,
+                    value.IsActive,
+                    value.TransmissionWeight)),
+                (envelope.HeritableObjects?.Traces ?? []).Select(trace => new TraceState(
+                    ResourceId.Parse(Required(trace.Id, "trace.id")),
+                    ResourceId.Parse(Required(trace.SourceId, "trace.sourceId")),
+                    trace.Strength,
+                    trace.IsActive,
+                    trace.Age,
+                    trace.DegradationPerStep))));
     }
 
     private static string Required(string? value, string propertyName)
@@ -148,7 +185,8 @@ public static class GenomeJsonCodec
         string? IndividualId,
         string? ParentVersionId,
         string? ChangeSummary,
-        IReadOnlyList<GenomeGroupEnvelope>? Groups);
+        IReadOnlyList<GenomeGroupEnvelope>? Groups,
+        HeritableObjectsEnvelope? HeritableObjects);
 
     private sealed record GenomeGroupEnvelope(
         string? GroupId,
@@ -162,4 +200,24 @@ public static class GenomeJsonCodec
         string? AlleleId,
         int Rank,
         double? NumericValue);
+
+    private sealed record HeritableObjectsEnvelope(
+        IReadOnlyList<NonPloidalObjectEnvelope>? NonPloidalObjects,
+        IReadOnlyList<TraceEnvelope>? Traces);
+
+    private sealed record NonPloidalObjectEnvelope(
+        string? Id,
+        string? Kind,
+        double NumericValue,
+        string? TextValue,
+        bool IsActive,
+        double TransmissionWeight);
+
+    private sealed record TraceEnvelope(
+        string? Id,
+        string? SourceId,
+        double Strength,
+        bool IsActive,
+        int Age,
+        double DegradationPerStep);
 }

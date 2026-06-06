@@ -5,8 +5,19 @@ public sealed record ReproductionPolicy
     public ReproductionPolicy(
         ReproductionCompatibility compatibility = ReproductionCompatibility.Fertile,
         IEnumerable<string>? contributingRoleNames = null,
-        IEnumerable<TransmissionWeight>? transmissionWeights = null)
+        IEnumerable<TransmissionWeight>? transmissionWeights = null,
+        bool inheritNonPloidalObjects = false,
+        bool includeInactiveNonPloidalObjects = false,
+        double inheritedTraceDegradationSteps = 0)
     {
+        if (double.IsNaN(inheritedTraceDegradationSteps) || double.IsInfinity(inheritedTraceDegradationSteps) || inheritedTraceDegradationSteps < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(inheritedTraceDegradationSteps),
+                inheritedTraceDegradationSteps,
+                "Inherited trace degradation steps must be finite and zero or greater.");
+        }
+
         Compatibility = compatibility;
         ContributingRoleNames = (contributingRoleNames ?? [])
             .Select(roleName =>
@@ -25,6 +36,9 @@ public sealed record ReproductionPolicy
             .ThenBy(weight => weight.GeneId)
             .ThenBy(weight => weight.AlleleId)
             .ToArray();
+        InheritNonPloidalObjects = inheritNonPloidalObjects;
+        IncludeInactiveNonPloidalObjects = includeInactiveNonPloidalObjects;
+        InheritedTraceDegradationSteps = inheritedTraceDegradationSteps;
     }
 
     public ReproductionCompatibility Compatibility { get; }
@@ -32,4 +46,10 @@ public sealed record ReproductionPolicy
     public IReadOnlyList<string> ContributingRoleNames { get; }
 
     public IReadOnlyList<TransmissionWeight> TransmissionWeights { get; }
+
+    public bool InheritNonPloidalObjects { get; }
+
+    public bool IncludeInactiveNonPloidalObjects { get; }
+
+    public double InheritedTraceDegradationSteps { get; }
 }

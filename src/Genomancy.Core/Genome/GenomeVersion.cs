@@ -1,4 +1,5 @@
 using Genomancy.Core.Definitions;
+using Genomancy.Core.Inheritance;
 
 namespace Genomancy.Core.Genome;
 
@@ -10,7 +11,8 @@ public sealed record GenomeVersion
         ExternalIndividualId individualId,
         GenomeState state,
         GenomeVersionId? parentVersionId = null,
-        string changeSummary = "")
+        string changeSummary = "",
+        HeritableObjectState? heritableObjects = null)
     {
         ArgumentNullException.ThrowIfNull(state);
 
@@ -20,6 +22,7 @@ public sealed record GenomeVersion
         ParentVersionId = parentVersionId;
         State = new GenomeState(state.Groups);
         ChangeSummary = changeSummary;
+        HeritableObjects = heritableObjects ?? new HeritableObjectState();
     }
 
     public GenomeVersionId Id { get; }
@@ -33,4 +36,6 @@ public sealed record GenomeVersion
     public GenomeState State { get; }
 
     public string ChangeSummary { get; }
+
+    public HeritableObjectState HeritableObjects { get; }
 }

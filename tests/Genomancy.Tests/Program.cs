@@ -3,6 +3,7 @@ using Genomancy.Core;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Inheritance;
 using Genomancy.Core.Mutation;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
@@ -52,6 +53,11 @@ var tests = new (string Name, Action Test)[]
     ("Numeric copy count and structural mutations update current state", NumericCopyCountAndStructuralMutationsUpdateCurrentState),
     ("Repair and revert restore current genome state", RepairAndRevertRestoreCurrentGenomeState),
     ("External mutation source is explicit and policy controlled", ExternalMutationSourceIsExplicitAndPolicyControlled),
+    ("Non ploidal object inheritance is weighted and deterministic", NonPloidalObjectInheritanceIsWeightedAndDeterministic),
+    ("Non ploidal inheritance respects inactive and zero weight objects", NonPloidalInheritanceRespectsInactiveAndZeroWeightObjects),
+    ("Trace state supports activation replacement and degradation", TraceStateSupportsActivationReplacementAndDegradation),
+    ("Reproduction can inherit non ploidal objects and traces", ReproductionCanInheritNonPloidalObjectsAndTraces),
+    ("Genome serialization preserves non ploidal objects and traces", GenomeSerializationPreservesNonPloidalObjectsAndTraces),
 };
 
 var failures = new List<string>();
@@ -1012,6 +1018,165 @@ static void ExternalMutationSourceIsExplicitAndPolicyControlled()
     AssertEqual(Id("allele.skin.dark"), CurrentAlleles(allowedCurrent, Id("group.common"), Id("gene.skin"))[0].AlleleId);
 }
 
+static void NonPloidalObjectInheritanceIsWeightedAndDeterministic()
+{
+    var firstParent = CreateHeritableParent(
+        "parent.first",
+        "external:first",
+        new HeritableObjectState(
+            [
+                new NonPloidalObjectState(
+                    Id("marker.blessing"),
+                    NonPloidalObjectKind.Marker,
+                    textValue: "first",
+                    transmissionWeight: 9),
+            ]));
+    var secondParent = CreateHeritableParent(
+        "parent.second",
+        "external:second",
+        new HeritableObjectState(
+            [
+                new NonPloidalObjectState(
+                    Id("marker.blessing"),
+                    NonPloidalObjectKind.Marker,
+                    textValue: "second",
+                    transmissionWeight: 1),
+            ]));
+
+    var first = NonPloidalInheritanceService.Inherit(
+        [new ReproductionParentRole("first", firstParent), new ReproductionParentRole("second", secondParent)],
+        42);
+    var second = NonPloidalInheritanceService.Inherit(
+        [new ReproductionParentRole("first", firstParent), new ReproductionParentRole("second", secondParent)],
+        42);
+
+    AssertEqual(first.State, second.State);
+    AssertEqual(1, first.State.NonPloidalObjects.Count);
+    AssertEqual(Id("marker.blessing"), first.State.NonPloidalObjects[0].Id);
+
+    var firstWins = 0;
+    var secondWins = 0;
+
+    for (ulong seed = 0; seed < 128; seed++)
+    {
+        var result = NonPloidalInheritanceService.Inherit(
+            [new ReproductionParentRole("first", firstParent), new ReproductionParentRole("second", secondParent)],
+            seed);
+        var selected = result.State.NonPloidalObjects[0].TextValue;
+
+        if (selected == "first")
+        {
+            firstWins++;
+        }
+        else if (selected == "second")
+        {
+            secondWins++;
+        }
+    }
+
+    AssertTrue(firstWins > secondWins, "Higher weighted non-ploidal object should win more often across a deterministic seed sweep.");
+}
+
+static void NonPloidalInheritanceRespectsInactiveAndZeroWeightObjects()
+{
+    var parent = CreateHeritableParent(
+        "parent.state",
+        "external:state",
+        new HeritableObjectState(
+            [
+                new NonPloidalObjectState(Id("flag.inactive"), NonPloidalObjectKind.Flag, isActive: false),
+                new NonPloidalObjectState(Id("flag.zero"), NonPloidalObjectKind.Flag, transmissionWeight: 0),
+                new NonPloidalObjectState(Id("flag.active"), NonPloidalObjectKind.Flag),
+            ]));
+
+    var activeOnly = NonPloidalInheritanceService.Inherit([new ReproductionParentRole("source", parent)], 12);
+    var includeInactive = NonPloidalInheritanceService.Inherit(
+        [new ReproductionParentRole("source", parent)],
+        12,
+        includeInactiveObjects: true);
+
+    AssertTrue(!activeOnly.State.NonPloidalObjects.Any(value => value.Id == Id("flag.inactive")), "Inactive objects should not transmit by default.");
+    AssertTrue(!includeInactive.State.NonPloidalObjects.Any(value => value.Id == Id("flag.zero")), "Zero-weight objects should not transmit.");
+    AssertTrue(includeInactive.State.NonPloidalObjects.Any(value => value.Id == Id("flag.inactive")), "Explicit include-inactive should allow active-state-independent transmission.");
+}
+
+static void TraceStateSupportsActivationReplacementAndDegradation()
+{
+    var state = new HeritableObjectState(
+        traces:
+        [
+            new TraceState(Id("trace.dragon"), Id("source.dragon"), 1.0, degradationPerStep: 0.25),
+        ]);
+
+    state = TraceUpdateService.ActivateTrace(state, Id("trace.dragon"));
+    state = TraceUpdateService.ReplaceTraceStrength(state, Id("trace.dragon"), 0.8);
+    state = TraceUpdateService.DegradeTraces(state, steps: 2);
+
+    var trace = state.Traces.Single(value => value.Id == Id("trace.dragon"));
+
+    AssertTrue(trace.IsActive, "Trace activation must persist through replacement and degradation.");
+    AssertEqual(0.3, Math.Round(trace.Strength, 10));
+    AssertEqual(2, trace.Age);
+}
+
+static void ReproductionCanInheritNonPloidalObjectsAndTraces()
+{
+    var definition = CreateReproductionDefinition(requiredSkinAlleleCount: 2).Freeze();
+    var mother = CreateHeritableParent(
+        "parent.mother",
+        "external:mother",
+        new HeritableObjectState(
+            [
+                new NonPloidalObjectState(Id("archive.maternal"), NonPloidalObjectKind.Archive, textValue: "memory"),
+            ],
+            [
+                new TraceState(Id("trace.maternal"), Id("source.maternal"), 0.8, isActive: true, degradationPerStep: 0.1),
+            ]),
+        "allele.skin.light");
+    var father = CreateHeritableParent(
+        "parent.father",
+        "external:father",
+        new HeritableObjectState(),
+        "allele.skin.dark");
+
+    var result = Reproduce(
+        definition,
+        8,
+        [new ReproductionParentRole("mother", mother), new ReproductionParentRole("father", father)],
+        new ReproductionPolicy(inheritNonPloidalObjects: true, inheritedTraceDegradationSteps: 1));
+
+    AssertEqual(ReproductionResultStatus.Success, result.Status);
+    var offspring = result.OffspringVersion ?? throw new InvalidOperationException("Expected offspring.");
+
+    AssertTrue(offspring.HeritableObjects.NonPloidalObjects.Any(value => value.Id == Id("archive.maternal")), "Reproduction should carry inherited non-ploidal objects when requested.");
+    AssertEqual(0.7, Math.Round(offspring.HeritableObjects.Traces.Single(value => value.Id == Id("trace.maternal")).Strength, 10));
+}
+
+static void GenomeSerializationPreservesNonPloidalObjectsAndTraces()
+{
+    var version = CreateHeritableParent(
+        "parent.serial",
+        "external:serial",
+        new HeritableObjectState(
+            [
+                new NonPloidalObjectState(
+                    Id("counter.oath"),
+                    NonPloidalObjectKind.Counter,
+                    numericValue: 3,
+                    textValue: "kept",
+                    transmissionWeight: 0.5),
+            ],
+            [
+                new TraceState(Id("trace.oath"), Id("source.oath"), 0.6, isActive: true, age: 2, degradationPerStep: 0.1),
+            ]));
+
+    var jsonRoundTrip = GenomeJsonCodec.ReadVersionFromBuffer(GenomeJsonCodec.WriteVersionToBuffer(version), TestVersion());
+    var binaryRoundTrip = GenomeBinaryCodec.ReadVersionFromBuffer(GenomeBinaryCodec.WriteVersionToBuffer(version), TestVersion());
+
+    AssertEqual(version.HeritableObjects, jsonRoundTrip.HeritableObjects);
+    AssertEqual(version.HeritableObjects, binaryRoundTrip.HeritableObjects);
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -1209,6 +1374,31 @@ static GenomeVersion CreateParentGenome(
         TestVersion(),
         ExternalIndividualId.Parse(individualId),
         new GenomeState(groups));
+}
+
+static GenomeVersion CreateHeritableParent(
+    string versionId,
+    string individualId,
+    HeritableObjectState heritableObjectState,
+    string skinAllele = "allele.skin.light")
+{
+    return new GenomeVersion(
+        GenomeVersionId.Parse(versionId),
+        TestVersion(),
+        ExternalIndividualId.Parse(individualId),
+        new GenomeState(
+            [
+                new GenomeGroupState(
+                    Id("group.common"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.skin"),
+                            [
+                                new RankedAlleleEntry(Id(skinAllele), 0),
+                            ]),
+                    ]),
+            ]),
+        heritableObjects: heritableObjectState);
 }
 
 static ReproductionResult Reproduce(

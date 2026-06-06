@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 6 - Non-ploidal inheritance and traces (next; refine before implementation) |
+| Current implementation slice | Slice 7 - Compatibility, development, and expanded reproduction (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -67,6 +67,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Add `GeneDefinition.RequiredAlleleCount` and `GeneDefinition.ExpressionStrategy` as defaulted definition fields. | Slice 3 implementation | Enables initial ploidy/arity checks and expression strategies without breaking existing constructor call sites. | Accepted |
 | 2026-06-06 | Use named deterministic random streams derived from a root seed with FNV-1a stream-name hashing and SplitMix64 draws. | Slice 4 implementation | Gives cross-runtime deterministic stream separation without relying on `System.Random` as a serialized behavior contract. | Accepted |
 | 2026-06-06 | Refine Slice 5 to a current-copy mutation service with allele, numeric, copy-count, and group add/remove operations. | Slice 5 implementation | Covers first mutation/repair lifecycle without introducing full mutation event history, serialized mutation policy resources, or metaphysical source semantics. | Accepted |
+| 2026-06-06 | Add `HeritableObjectState` to `GenomeVersion` for non-ploidal objects and traces. | Slice 6 implementation | Integrates non-ploidal and trace state into immutable versioning and existing genome JSON/binary codecs without adding a separate persistence boundary. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -104,8 +105,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | In progress | 4 | Unit + matrix tests |
 | REQ-REPRO | Policy-driven allele/group/object selection, ordinary and nonstandard reproduction, germline/generation sites. | 11 | In progress | 4, 7 | Unit + integration + simulation |
 | REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | Planned | 9 | Unit + integration |
-| REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | Planned | 6 | Unit + resource tests |
-| REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | Planned | 6 | Unit + resource tests |
+| REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | In progress | 6 | Unit + resource tests |
+| REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | In progress | 6 | Unit + resource tests |
 | REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | In progress | 5 | Unit + policy coverage |
 | REQ-VERSION | Permanent version creation, commit policies, current-copy behavior, repair, reversion, and visibility. | 16 | In progress | 2, 5 | Unit + integration |
 | REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | In progress | 5 | Integration + negative tests |
@@ -457,9 +458,61 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 6 - Non-ploidal inheritance and traces
 
-Refine before implementation. Expected outcomes are typed non-ploidal objects, weighted transmission and update behavior, trace persistence/activation/replacement/degradation, and serialization/versioning integration.
+**Status:** Verified on 2026-06-06 for the refined Slice 6 acceptance criteria. Broader requirement families remain **In progress** where later slices add designer-authored policies, trace effects on allele replacement/mutation, non-ploidal mutation, resource tests, and richer decay/loss rules.
 
-**Requirements targeted:** REQ-NONPLOID, REQ-TRACE, REQ-REPRO, REQ-SERIAL.
+**Objective:** Persist and transmit heritable state that is not interpreted as ranked allele sets.
+
+**Deliverables**
+
+- Define typed non-ploidal object state for flags, counters, accumulators, markers, weights, and archives.
+- Define trace state with source ID, strength, active flag, age, and degradation rate.
+- Add heritable non-ploidal/trace state to immutable genome versions.
+- Preserve heritable object state through JSON and preliminary binary genome codecs.
+- Implement deterministic weighted inheritance of non-ploidal objects from parent roles.
+- Support inactive-object exclusion by default and explicit inclusion when requested.
+- Support trace activation, strength replacement, and degradation.
+- Let ordinary reproduction optionally inherit non-ploidal objects and traces.
+
+**Acceptance criteria**
+
+- Non-ploidal inheritance is deterministic for identical parent roles, weights, and seed.
+- Zero-weight non-ploidal objects do not transmit.
+- Inactive non-ploidal objects do not transmit unless explicitly included.
+- Trace activation, replacement, and degradation preserve stable IDs and source references.
+- Reproduction can create offspring genome versions with inherited non-ploidal objects and degraded traces.
+- JSON and binary genome round trips preserve non-ploidal objects and traces.
+
+**Tests**
+
+- Weighted deterministic non-ploidal inheritance and seed-sweep sanity test.
+- Inactive and zero-weight transmission boundary test.
+- Trace activation, replacement, and degradation test.
+- Ordinary reproduction integration test for inherited non-ploidal objects and traces.
+- JSON and binary genome serialization round-trip test for heritable object state.
+
+**Implemented**
+
+- `NonPloidalObjectState`, `NonPloidalObjectKind`, `TraceState`, and `HeritableObjectState`.
+- `NonPloidalInheritanceService` for deterministic weighted object selection and trace inheritance.
+- `TraceUpdateService` for activation, strength replacement, and degradation.
+- `GenomeVersion.HeritableObjects` with default empty state.
+- JSON and preliminary binary codec integration through the existing genome-version envelope.
+- `ReproductionPolicy` options for inherited non-ploidal object state, inactive object inclusion, and inherited trace degradation.
+- `OrdinaryReproductionService` integration for optional heritable-object offspring state.
+
+**Implementation simplification choices**
+
+- Non-ploidal definitions are runtime state only in this slice; no authored non-ploidal resource definitions or validation graph are implemented.
+- Weighted object inheritance selects at most one object state per object ID from parent roles.
+- Trace inheritance deduplicates by trace ID using highest strength, then applies fixed degradation steps.
+- Trace activation/degradation do not yet affect allele expression, mutation targets, or repair behavior.
+- Binary serialization remains the preliminary JSON-wrapped codec from Slice 2.
+
+**Not yet implemented**
+
+- Non-ploidal mutation operations, trace mutation/degradation policies, trace loss rules, activation effects, allele replacement effects, resource-authored trace/non-ploidal policies, statistical trace tests, and resource-test coverage.
+
+**Requirements advanced:** REQ-NONPLOID, REQ-TRACE, REQ-REPRO, REQ-SERIAL.
 
 ### Slice 7 - Compatibility, development, and expanded reproduction
 
@@ -576,10 +629,17 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - protected group/gene enforcement and allowed-allele validation
   - current-only mutation, committed mutation, base-version repair, and current-state reversion
   - external mutation source allow/deny boundary
+- Slice 6 non-ploidal inheritance and traces:
+  - typed non-ploidal object state and trace state
+  - immutable genome-version integration for heritable object state
+  - deterministic weighted non-ploidal object inheritance
+  - trace activation, strength replacement, degradation, and reproduction inheritance
+  - JSON and preliminary binary codec integration for non-ploidal objects and traces
 
 ### Not yet implemented
 
-- Nonstandard reproduction, full compatibility, development/gestation, non-ploidal inheritance, traces, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Nonstandard reproduction, full compatibility, development/gestation, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Final serialization/storage modules beyond Slice 2 preliminary core codecs.
 - All Godot integration.
@@ -591,6 +651,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 3 starts with dominance hierarchy, codominance, and numeric midpoint expression; advanced expression is deferred to Slice 8.
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
 - Slice 5 starts with request-time mutation policy objects and current-copy operations; serialized policy resources, mutation history, random mutation timing, and arbitrary historical repair are deferred.
+- Slice 6 stores non-ploidal/trace state directly on genome versions; authored non-ploidal definitions and trace effect policies are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -644,6 +705,12 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - numeric update, copy-count adjustment, group add, and group remove
   - repair and revert lifecycle behavior
   - external source allow/deny policy boundary
+- Slice 6 package-free implementation tests in `tests/Genomancy.Tests`:
+  - weighted deterministic non-ploidal inheritance
+  - inactive and zero-weight transmission boundaries
+  - trace activation, replacement, and degradation
+  - ordinary reproduction integration for non-ploidal objects and traces
+  - JSON and binary serialization round trips for heritable object state
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -654,8 +721,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 3 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 4 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 5 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 6 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
