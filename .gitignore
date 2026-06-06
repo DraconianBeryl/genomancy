@@ -1,0 +1,4 @@
+.dotnet-work/
+
+bin/
+obj/

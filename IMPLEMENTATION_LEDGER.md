@@ -10,8 +10,8 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-05 |
-| Current implementation slice | Slice 0 - Project foundation (not started) |
+| Last ledger update | 2026-06-06 |
+| Current implementation slice | Slice 1 - Definition kernel, modes, IDs, and validation (not started) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -59,6 +59,8 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-05 | Select C# as the implementation language. | Project request | Constrains solution structure and public API design. | Accepted |
 | 2026-06-05 | Require Godot usability without exclusive Godot coupling. | Project request | Core assemblies must not reference Godot; integration belongs in an adapter assembly. | Accepted |
 | 2026-06-05 | Require incremental-refinement planning. | Project request | Near-term slices have detailed deliverables/tests; distant slices remain outcome-level and must be refined before work starts. | Accepted |
+| 2026-06-06 | Use .NET SDK 9.0.111 and target `net9.0` for the initial core/test projects. | Slice 0 implementation | Establishes current build target; may be revisited if a later Godot adapter requires a narrower target. | Accepted |
+| 2026-06-06 | Use repo-local ignored `.dotnet-work/` directories for .NET, NuGet, XDG, and MSBuild writable state during verification. | Slice 0 implementation | Makes verification work in restricted Linux/Codex sandbox environments without relying on writable home directories or shared `/tmp` paths. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -73,7 +75,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-007 | Core persistence APIs target streams/buffers/text, not paths or databases. | Preserves the required storage boundary. | Accepted |
 | ARC-008 | Serialized authored references use stable IDs; runtime variants reference frozen definitions and policies. | Preserves compatibility and avoids embedding mutable authoring definitions. | Accepted |
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
-| ARC-010 | The exact target framework, binary encoding, and SQLite provider remain open until Slice 0/serialization refinement. | These choices require compatibility and maintenance evaluation. | Open |
+| ARC-010 | The initial target framework is `net9.0`; binary encoding and SQLite provider remain open until serialization/storage refinement. | .NET SDK 9.0.111 and Godot 4.6.2 are installed locally; the core has no Godot dependency, so retargeting remains possible. | Partially resolved |
 
 ## Requirements register
 
@@ -118,6 +120,8 @@ The source specification remains authoritative for detailed behavior. The IDs be
 The next five slices are deliberately detailed. Slices 5 and later are progressively less specific and must be refined before entering **In progress**. Refinement may split a slice, but it must preserve requirement IDs and record scope changes above.
 
 ### Slice 0 - Project foundation
+
+**Status:** Verified on 2026-06-06.
 
 **Objective:** Establish a buildable, testable C# repository with dependency direction that protects the engine-neutral core.
 
@@ -369,13 +373,27 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Initial persistent requirements/progress ledger.
 - Requirements-family IDs and source-section traceability.
 - Initial architecture constraints and incrementally refined implementation plan.
+- Slice 0 project foundation:
+  - `Genomancy.sln`
+  - `src/Genomancy.Core`
+  - `tests/Genomancy.Tests`
+  - shared build configuration in `Directory.Build.props`
+  - formatting defaults in `.editorconfig`
+  - repo ignore rules in `.gitignore`
+  - architecture note in `docs/architecture.md`
+  - documented verification command in `README.md`
+  - verification script in `scripts/verify.sh`
+- Minimal engine-neutral core assembly marker.
+- Package-free implementation smoke test harness with core dependency inspection.
+- Repo-local ignored `.dotnet-work/` verification state for restricted Linux/Codex sandbox execution.
 
 ### Not yet implemented
 
-- All C# projects and runtime/domain behavior.
+- Runtime/domain genetics behavior beyond the Slice 0 core assembly marker.
 - All core and optional serialization/storage modules.
 - All Godot integration.
-- All implementation and resource tests.
+- All resource tests.
+- Implementation tests beyond the Slice 0 smoke/dependency checks.
 
 ### Recorded simplifications
 
@@ -388,15 +406,20 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 ### Tests present
 
-- None. The repository had no implementation or test project at ledger creation.
+- Slice 0 package-free implementation smoke tests in `tests/Genomancy.Tests`:
+  - core assembly exposes stable name
+  - core assembly is marked Godot independent
+  - core assembly has no forbidden Godot, SQLite, or test-framework dependencies
+- Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
 
-- None yet.
+- Slice 0 project-foundation acceptance criteria are verified by `scripts/verify.sh`.
+- REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 
 ### Requirements without tests
 
-- All requirement families in the requirements register.
+- All requirement families in the requirements register except the limited Slice 0 core-boundary coverage noted above.
 
 ### Test layers required by the project
 
@@ -409,7 +432,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 | ID | Decision or risk | Needed by | Current handling |
 |---|---|---|---|
-| OPEN-001 | Exact .NET target framework and supported Godot version range. | Slice 0 | Evaluate current Godot C# compatibility before project creation. |
+| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 15 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
 | OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use a versioned preliminary codec, then stabilize in Slice 14. |
 | OPEN-003 | Definition immutability mechanism: immutable records/collections, generated snapshots, or both. | Slice 1 | Prototype against retained-reference mutation tests. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
@@ -430,4 +453,3 @@ Every implementation change must update applicable portions of this ledger:
 6. Update **Test accounting** with exact covered and uncovered requirements.
 7. Record new architectural decisions, open decisions, and material risks.
 8. Mark a requirement **Verified** only after its required tests pass.
-
