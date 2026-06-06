@@ -24,6 +24,8 @@ public static class GeneExpressionEvaluator
             GeneExpressionStrategy.StrictDominance => StrictDominance(gene, alleleSet),
             GeneExpressionStrategy.Codominance => Codominance(gene, alleleSet),
             GeneExpressionStrategy.NumericMidpoint => NumericMidpoint(gene, alleleSet),
+            GeneExpressionStrategy.NumericSum => NumericSum(gene, alleleSet),
+            GeneExpressionStrategy.NumericWeightedAverage => NumericWeightedAverage(gene, alleleSet),
             _ => throw new ArgumentOutOfRangeException(nameof(gene), gene.ExpressionStrategy, "Unsupported expression strategy."),
         };
     }
@@ -52,19 +54,51 @@ public static class GeneExpressionEvaluator
 
     private static GeneExpressionResult NumericMidpoint(GeneDefinition gene, RankedAlleleSet alleleSet)
     {
-        var values = alleleSet.Entries
-            .Select(entry => entry.NumericValue)
-            .ToArray();
-
-        if (values.Any(value => value is null))
-        {
-            throw new ArgumentException("Numeric midpoint expression requires every allele entry to carry a numeric value.", nameof(alleleSet));
-        }
+        var values = RequiredNumericValues(alleleSet);
 
         return new GeneExpressionResult(
             gene.Id,
             GeneExpressionStrategy.NumericMidpoint,
             alleleSet.Entries.Select(entry => entry.AlleleId),
             values.Average(value => value ?? 0));
+    }
+
+    private static GeneExpressionResult NumericSum(GeneDefinition gene, RankedAlleleSet alleleSet)
+    {
+        var values = RequiredNumericValues(alleleSet);
+
+        return new GeneExpressionResult(
+            gene.Id,
+            GeneExpressionStrategy.NumericSum,
+            alleleSet.Entries.Select(entry => entry.AlleleId),
+            values.Sum(value => value ?? 0));
+    }
+
+    private static GeneExpressionResult NumericWeightedAverage(GeneDefinition gene, RankedAlleleSet alleleSet)
+    {
+        var values = RequiredNumericValues(alleleSet);
+        var weights = alleleSet.Entries.Select(entry => 1.0 / (entry.Rank + 1)).ToArray();
+        var weightedTotal = values.Zip(weights, (value, weight) => (value ?? 0) * weight).Sum();
+        var totalWeight = weights.Sum();
+
+        return new GeneExpressionResult(
+            gene.Id,
+            GeneExpressionStrategy.NumericWeightedAverage,
+            alleleSet.Entries.Select(entry => entry.AlleleId),
+            weightedTotal / totalWeight);
+    }
+
+    private static double?[] RequiredNumericValues(RankedAlleleSet alleleSet)
+    {
+        var values = alleleSet.Entries
+            .Select(entry => entry.NumericValue)
+            .ToArray();
+
+        if (values.Any(value => value is null))
+        {
+            throw new ArgumentException("Numeric expression requires every allele entry to carry a numeric value.", nameof(alleleSet));
+        }
+
+        return values;
     }
 }

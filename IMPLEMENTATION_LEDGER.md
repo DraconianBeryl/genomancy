@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 8 - Advanced expression, generated complements, and runtime variants (next; refine before implementation) |
+| Current implementation slice | Slice 9 - Mosaicism and chimerism (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -69,6 +69,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 5 to a current-copy mutation service with allele, numeric, copy-count, and group add/remove operations. | Slice 5 implementation | Covers first mutation/repair lifecycle without introducing full mutation event history, serialized mutation policy resources, or metaphysical source semantics. | Accepted |
 | 2026-06-06 | Add `HeritableObjectState` to `GenomeVersion` for non-ploidal objects and traces. | Slice 6 implementation | Integrates non-ploidal and trace state into immutable versioning and existing genome JSON/binary codecs without adding a separate persistence boundary. | Accepted |
 | 2026-06-06 | Refine Slice 7 to compatibility metadata, inviable reproduction, clonal-copy reproduction, development timelines, gestation context, and numeric maternal effects. | Slice 7 implementation | Advances compatibility/development/expanded reproduction while deferring full hybrid morphology construction, nonstandard reproduction families, and gestational simulation. | Accepted |
+| 2026-06-06 | Refine Slice 8 to numeric sum/weighted-average expression, deterministic generated complements, and JSON-serializable runtime body-plan variants. | Slice 8 implementation | Advances advanced expression and variant state while deferring full expression policy language, generated complement resource graphs, and binary variant codecs. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -100,7 +101,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-GENE | Categorical and numeric genes, alleles, ranked sets, and opt-in expression patterns. | 4.5-4.7, 5 | In progress | 2-3 | Unit + resource tests |
 | REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | In progress | 3, 8 | Unit + graph validation |
 | REQ-BODY | Authored body plans, active/dormant/primary states, families, activation, and temporary shapeshifting. | 4.12, 7.1-7.7 | In progress | 3 | Unit + integration |
-| REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | Planned | 8 | Unit + serialization + resource tests |
+| REQ-VARIANT | Deterministic, serializable, policy-created runtime body-plan variants as instance state. | 4.13, 7.8, 28.4 | In progress | 8 | Unit + serialization + resource tests |
 | REQ-DEVELOP | Developmental sequencing, gestation, post-birth requirements, and maternal/gestational effects. | 8 | In progress | 7 | Integration + resource tests |
 | REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | In progress | 7 | Unit + resource tests |
 | REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | In progress | 4 | Unit + matrix tests |
@@ -572,9 +573,55 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 8 - Advanced expression, generated complements, and runtime variants
 
-Refine before implementation. Expected outcomes are the remaining expression patterns, policy-controlled generated genetic complements, and deterministic runtime-derived body-plan variants with validation, versioning, and serialization.
+**Status:** Verified on 2026-06-06 for the refined Slice 8 acceptance criteria. Broader requirement families remain **In progress** where later slices add full expression policy language, resource-authored generated complements, binary variant codecs, and resource tests.
 
-**Requirements targeted:** REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR.
+**Objective:** Extend expression and body-plan interpretation with deterministic generated complements and first-class runtime variant state.
+
+**Deliverables**
+
+- Add additional numeric expression strategies beyond midpoint.
+- Generate missing complement group state from explicit policy inputs.
+- Validate generated complement group/gene/allele references against frozen definitions.
+- Represent runtime body-plan variants with stable IDs, system-definition version, base body-plan ID, group overrides, and change summary.
+- Evaluate runtime body-plan variants against genome state and active body-plan expression state.
+- Serialize runtime body-plan variants to deterministic JSON with system-version compatibility checks.
+
+**Acceptance criteria**
+
+- Numeric sum and weighted-average expression results are deterministic and distinguishable.
+- Generated complements add missing groups and do not regenerate existing groups.
+- Generated complements reject unknown or disallowed references before changing state.
+- Runtime variants can require generated groups and produce incomplete/active availability results.
+- Runtime variant JSON round trips preserve IDs, group overrides, base body-plan reference, change summary, and system-definition version.
+- Runtime variant deserialization rejects incompatible system-definition versions.
+
+**Tests**
+
+- Numeric sum and weighted-average expression tests.
+- Generated complement success, idempotence, and invalid-reference tests.
+- Runtime body-plan variant availability test with generated required group.
+- Runtime body-plan variant JSON round-trip and version-rejection tests.
+
+**Implemented**
+
+- `GeneExpressionStrategy.NumericSum` and `GeneExpressionStrategy.NumericWeightedAverage`.
+- `GeneratedComplementPolicy`, `GeneratedComplementResult`, and `GeneratedComplementService`.
+- `BodyPlanVariantId`, `RuntimeBodyPlanVariant`, `RuntimeBodyPlanVariantService`, and `RuntimeBodyPlanVariantJsonCodec`.
+- Structural equality for runtime variants with collection-valued group overrides.
+
+**Implementation simplification choices**
+
+- Generated complement policies are request-time objects, not authored resource graph nodes.
+- Generated complements only add whole missing group state; no partial subgroup generation or policy-driven allele synthesis.
+- Runtime variants reference a base body plan and add required/optional/shared groups; they do not remove authored base groups.
+- Runtime variant serialization is JSON-only in this slice; binary variant serialization remains deferred.
+- Advanced expression adds two numeric strategies only; full expression policy language and contextual trace/non-ploidal effects remain deferred.
+
+**Not yet implemented**
+
+- Resource-authored generated complement policies, generated body structures beyond group state, runtime variant persistence in genome versions, binary variant codecs, variant migration, advanced expression policy language, trace/non-ploidal expression effects, and resource-test coverage.
+
+**Requirements advanced:** REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR.
 
 ### Slice 9 - Mosaicism and chimerism
 
@@ -690,10 +737,16 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - inviable reproduction outcomes
   - clonal-copy reproduction mode
   - development stages, plans, gestation context, timelines, and maternal numeric effects
+- Slice 8 advanced expression, generated complements, and runtime variants:
+  - numeric sum and weighted-average expression
+  - generated complement policy/result/service for missing group state
+  - runtime body-plan variant IDs/state/evaluation
+  - deterministic JSON codec for runtime body-plan variants
 
 ### Not yet implemented
 
-- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, mosaicism, chimerism, population templates, generated complements, and runtime variants.
+- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, mosaicism, chimerism, and population templates.
+- Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
@@ -709,6 +762,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 5 starts with request-time mutation policy objects and current-copy operations; serialized policy resources, mutation history, random mutation timing, and arbitrary historical repair are deferred.
 - Slice 6 stores non-ploidal/trace state directly on genome versions; authored non-ploidal definitions and trace effect policies are deferred.
 - Slice 7 starts compatibility/development with in-memory rules and opaque gestation context; full authored resources and gestational simulation are deferred.
+- Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -774,6 +828,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - clonal-copy reproduction success and invalid multi-contributor rejection
   - development timeline ordering and missing gestation context
   - maternal numeric-effect immutability
+- Slice 8 package-free implementation tests in `tests/Genomancy.Tests`:
+  - numeric sum and weighted-average expression
+  - generated complement success, idempotence, and invalid-reference rejection
+  - runtime body-plan variant availability with generated required groups
+  - runtime body-plan variant JSON round trip and version rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -786,8 +845,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 5 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 6 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 7 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 8 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 

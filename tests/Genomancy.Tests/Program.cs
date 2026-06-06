@@ -10,6 +10,7 @@ using Genomancy.Core.Mutation;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
+using Genomancy.Core.Variants;
 
 var tests = new (string Name, Action Test)[]
 {
@@ -65,6 +66,10 @@ var tests = new (string Name, Action Test)[]
     ("Clonal copy reproduction creates offspring without allele recombination", ClonalCopyReproductionCreatesOffspringWithoutAlleleRecombination),
     ("Development timeline enforces gestation ordering requirements", DevelopmentTimelineEnforcesGestationOrderingRequirements),
     ("Maternal effects update numeric genome state without mutating source", MaternalEffectsUpdateNumericGenomeStateWithoutMutatingSource),
+    ("Advanced numeric expression strategies are deterministic", AdvancedNumericExpressionStrategiesAreDeterministic),
+    ("Generated complements add missing groups and validate definitions", GeneratedComplementsAddMissingGroupsAndValidateDefinitions),
+    ("Runtime body plan variants evaluate required generated groups", RuntimeBodyPlanVariantsEvaluateRequiredGeneratedGroups),
+    ("Runtime body plan variant serialization preserves versioned state", RuntimeBodyPlanVariantSerializationPreservesVersionedState),
 };
 
 var failures = new List<string>();
@@ -1291,6 +1296,141 @@ static void MaternalEffectsUpdateNumericGenomeStateWithoutMutatingSource()
     AssertEqual(0.25, source.State.Groups[0].GeneAlleles[0].Entries[0].NumericValue);
 }
 
+static void AdvancedNumericExpressionStrategiesAreDeterministic()
+{
+    var context = new ExpressionEvaluationContext(
+        Id("body.human"),
+        DevelopmentalPhaseId.Parse("phase.adult"),
+        null,
+        new ExpressionExternalContext());
+    var alleleSet = new RankedAlleleSet(
+        Id("gene.size"),
+        [
+            new RankedAlleleEntry(Id("allele.size.small"), 0, 2),
+            new RankedAlleleEntry(Id("allele.size.large"), 1, 8),
+        ]);
+    var sum = GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.size"),
+            [Id("allele.size.small"), Id("allele.size.large")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.NumericSum),
+        alleleSet);
+    var weighted = GeneExpressionEvaluator.Evaluate(
+        context,
+        new GeneDefinition(
+            Id("gene.size"),
+            [Id("allele.size.small"), Id("allele.size.large")],
+            requiredAlleleCount: 2,
+            expressionStrategy: GeneExpressionStrategy.NumericWeightedAverage),
+        alleleSet);
+
+    AssertEqual(10.0, sum.NumericValue);
+    AssertEqual(4.0, weighted.NumericValue);
+}
+
+static void GeneratedComplementsAddMissingGroupsAndValidateDefinitions()
+{
+    var definition = CreateVariantDefinition().Freeze();
+    var initial = new GenomeState([CreateExpressionCommonGroupState()]);
+    var policy = new GeneratedComplementPolicy(
+        Id("group.wings"),
+        [
+            new RankedAlleleSet(
+                Id("gene.wing"),
+                [
+                    new RankedAlleleEntry(Id("allele.wing.feathered"), 0),
+                ]),
+        ]);
+    var result = GeneratedComplementService.ApplyMissingComplement(definition, initial, policy);
+
+    AssertTrue(result.WasGenerated, "Missing complement group should be generated.");
+    AssertTrue(result.State.Groups.Any(group => group.GroupId == Id("group.wings")), "Generated group must be present.");
+
+    var second = GeneratedComplementService.ApplyMissingComplement(definition, result.State, policy);
+
+    AssertTrue(!second.WasGenerated, "Existing complement group should not be regenerated.");
+
+    var invalid = GeneratedComplementService.ApplyMissingComplement(
+        definition,
+        initial,
+        new GeneratedComplementPolicy(
+            Id("group.wings"),
+            [
+                new RankedAlleleSet(
+                    Id("gene.wing"),
+                    [
+                        new RankedAlleleEntry(Id("allele.skin.light"), 0),
+                    ]),
+            ]));
+
+    AssertTrue(!invalid.WasGenerated, "Invalid generated allele should be rejected.");
+    AssertContainsExpressionDiagnostic(invalid.Diagnostics, "GENERATED_COMPLEMENT_UNKNOWN_ALLELE");
+}
+
+static void RuntimeBodyPlanVariantsEvaluateRequiredGeneratedGroups()
+{
+    var definition = CreateVariantDefinition().Freeze();
+    var variant = new RuntimeBodyPlanVariant(
+        BodyPlanVariantId.Parse("variant.human.winged"),
+        TestVersion(),
+        Id("body.human"),
+        requiredGroupIds: [Id("group.wings")],
+        changeSummary: "temporary wings");
+    var expressionState = new BodyPlanExpressionState([Id("body.human")]);
+    var withoutComplement = RuntimeBodyPlanVariantService.EvaluateAvailability(
+        definition,
+        new GenomeState([CreateExpressionCommonGroupState()]),
+        expressionState,
+        variant);
+
+    AssertEqual(BodyPlanAvailabilityStatus.Incomplete, withoutComplement.Status);
+
+    var generated = GeneratedComplementService.ApplyMissingComplement(
+        definition,
+        new GenomeState([CreateExpressionCommonGroupState()]),
+        new GeneratedComplementPolicy(
+            Id("group.wings"),
+            [
+                new RankedAlleleSet(
+                    Id("gene.wing"),
+                    [
+                        new RankedAlleleEntry(Id("allele.wing.feathered"), 0),
+                    ]),
+            ]));
+    var available = RuntimeBodyPlanVariantService.EvaluateAvailability(
+        definition,
+        generated.State,
+        expressionState,
+        variant);
+
+    AssertEqual(BodyPlanAvailabilityStatus.Active, available.Status);
+}
+
+static void RuntimeBodyPlanVariantSerializationPreservesVersionedState()
+{
+    var variant = new RuntimeBodyPlanVariant(
+        BodyPlanVariantId.Parse("variant.human.winged"),
+        TestVersion(),
+        Id("body.human"),
+        requiredGroupIds: [Id("group.wings")],
+        optionalGroupIds: [Id("group.fur")],
+        sharedGroupIds: [Id("group.common")],
+        "temporary wings");
+    var text = RuntimeBodyPlanVariantJsonCodec.WriteToText(variant);
+    var roundTrip = RuntimeBodyPlanVariantJsonCodec.ReadFromBuffer(
+        RuntimeBodyPlanVariantJsonCodec.WriteToBuffer(variant),
+        TestVersion());
+
+    AssertEqual(text, RuntimeBodyPlanVariantJsonCodec.WriteToText(roundTrip));
+    AssertEqual(variant, roundTrip);
+    AssertThrows<GenomeSerializationException>(
+        () => RuntimeBodyPlanVariantJsonCodec.ReadFromBuffer(
+            RuntimeBodyPlanVariantJsonCodec.WriteToBuffer(variant),
+            SystemDefinitionVersion.Parse("other.1")));
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -1547,6 +1687,18 @@ static SystemDefinitionBuilder CreateMutationDefinition()
     builder.AddGroup(new GroupDefinition(Id("group.common"), geneIds: [Id("gene.skin")]));
     builder.AddGroup(new GroupDefinition(Id("group.fur"), geneIds: [Id("gene.fur")]));
     builder.AddBodyPlan(new BodyPlanDefinition(Id("body.mutation-test"), requiredGroupIds: [Id("group.common")], optionalGroupIds: [Id("group.fur")]));
+    return builder;
+}
+
+static SystemDefinitionBuilder CreateVariantDefinition()
+{
+    var builder = CreateExpressionDefinition();
+    builder.AddAllele(new AlleleDefinition(Id("allele.wing.feathered")));
+    builder.AddGene(new GeneDefinition(
+        Id("gene.wing"),
+        [Id("allele.wing.feathered")],
+        requiredAlleleCount: 1));
+    builder.AddGroup(new GroupDefinition(Id("group.wings"), geneIds: [Id("gene.wing")]));
     return builder;
 }
 
