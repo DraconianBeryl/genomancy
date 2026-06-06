@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 1 - Definition kernel, modes, IDs, and validation (not started) |
+| Current implementation slice | Slice 2 - Genome state, immutable versions, and baseline serialization (not started) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -61,6 +61,8 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-05 | Require incremental-refinement planning. | Project request | Near-term slices have detailed deliverables/tests; distant slices remain outcome-level and must be refined before work starts. | Accepted |
 | 2026-06-06 | Use .NET SDK 9.0.111 and target `net9.0` for the initial core/test projects. | Slice 0 implementation | Establishes current build target; may be revisited if a later Godot adapter requires a narrower target. | Accepted |
 | 2026-06-06 | Use repo-local ignored `.dotnet-work/` directories for .NET, NuGet, XDG, and MSBuild writable state during verification. | Slice 0 implementation | Makes verification work in restricted Linux/Codex sandbox environments without relying on writable home directories or shared `/tmp` paths. | Accepted |
+| 2026-06-06 | Force single-node/non-parallel MSBuild restore/build in `scripts/verify.sh`. | Slice 1 implementation | Codex Linux sandbox breaks MSBuild's parallel restore graph probe, causing `_IsProjectRestoreSupported` to fail with `0 Error(s)`; `-m:1`, `RestoreBuildInParallel=false`, and `BuildInParallel=false` make the failure mode disappear and expose normal compiler/test output. | Accepted |
+| 2026-06-06 | Execute the compiled test DLL with `dotnet exec` instead of `dotnet run --no-build`. | Slice 1 implementation | Avoids sandbox-sensitive apphost path resolution after build. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -83,10 +85,10 @@ The source specification remains authoritative for detailed behavior. The IDs be
 
 | ID | Requirement family | Source sections | Status | Planned slice | Verification |
 |---|---|---:|---|---|---|
-| REQ-MODE | Fixed design/runtime operating mode, startup ordering, validation, freeze, and system-definition versions. | 3, 27, 30 | Planned | 1 | Unit + integration |
-| REQ-MODE-FREEZE | Runtime definitions become immutable after successful validation/migration and before ordinary runtime state loads/operations. | 3.3-3.6, 28.3 | Planned | 1 | Unit + negative tests |
-| REQ-ID | Stable identifiers and compatibility references for authored resources and serialized state. | 3.6, 31.3 | Planned | 1 | Unit + serialization tests |
-| REQ-MODEL | Core object hierarchy from allele/value through nested population structures. | 4, 24 | Planned | 1-2 | Unit tests |
+| REQ-MODE | Fixed design/runtime operating mode, startup ordering, validation, freeze, and system-definition versions. | 3, 27, 30 | In progress | 1 | Unit + integration |
+| REQ-MODE-FREEZE | Runtime definitions become immutable after successful validation/migration and before ordinary runtime state loads/operations. | 3.3-3.6, 28.3 | In progress | 1 | Unit + negative tests |
+| REQ-ID | Stable identifiers and compatibility references for authored resources and serialized state. | 3.6, 31.3 | In progress | 1 | Unit + serialization tests |
+| REQ-MODEL | Core object hierarchy from allele/value through nested population structures. | 4, 24 | In progress | 1-2 | Unit tests |
 | REQ-GENOME | Individuals, genomes, immutable permanent versions, and mutable/provisional current copies remain distinct. | 4.1-4.4, 16, 28.1 | Planned | 2 | Unit + invariant tests |
 | REQ-GENE | Categorical and numeric genes, alleles, ranked sets, and opt-in expression patterns. | 4.5-4.7, 5 | Planned | 2-3 | Unit + resource tests |
 | REQ-GROUP | Groups, subgroups, presence, completeness, sharing, dependencies, linkage, and generated complements. | 6 | Planned | 3, 8 | Unit + graph validation |
@@ -107,10 +109,10 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | Planned | 10 | Unit + statistical tests |
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | Planned | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | Planned | 10 | Unit tests |
-| REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | Planned | 1 onward | Unit + coverage tests |
+| REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
 | REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | Planned | 4, 12 | Determinism + statistical tests |
-| REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | Planned | 1, 12-13 | Validation + resource tests |
+| REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | Planned | 2 onward; finalized 14 | Round-trip + compatibility |
 | REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | Planned | 14 | Integration tests |
 | REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 15 | Build + adapter tests |
@@ -152,6 +154,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - No genetics behavior, serialization format, Godot resource type, or storage provider is implemented.
 
 ### Slice 1 - Definition kernel, modes, IDs, and validation
+
+**Status:** Verified on 2026-06-06 for the Slice 1 acceptance criteria. Broader requirement families remain **In progress** where later slices add behavior.
 
 **Objective:** Represent a small authored definition graph and enforce the design/runtime boundary.
 
@@ -386,14 +390,30 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Minimal engine-neutral core assembly marker.
 - Package-free implementation smoke test harness with core dependency inspection.
 - Repo-local ignored `.dotnet-work/` verification state for restricted Linux/Codex sandbox execution.
+- Slice 1 definition kernel:
+  - validated stable resource IDs
+  - validated system-definition versions
+  - fixed design/runtime system mode
+  - mutable design definition builder
+  - immutable frozen runtime definition snapshot
+  - authored allele, gene, group, and body-plan definitions
+  - policy reference identity and policy kind taxonomy
+  - validation diagnostics and deterministic validation result ordering
+  - duplicate-ID, missing-reference, and group-dependency-cycle validation
+  - runtime startup with optional migration before freeze
+  - typed exceptions for validation failure and post-freeze definition mutation
+- Verification hardening for Codex Linux sandbox:
+  - forced single-node/non-parallel MSBuild restore/build
+  - switched test execution to `dotnet exec` on the built test DLL
 
 ### Not yet implemented
 
 - Runtime/domain genetics behavior beyond the Slice 0 core assembly marker.
+- Genome versions, current genome copies, individuals, expression, inheritance, mutation, serialization, and all later domain mechanics.
 - All core and optional serialization/storage modules.
 - All Godot integration.
 - All resource tests.
-- Implementation tests beyond the Slice 0 smoke/dependency checks.
+- Implementation tests beyond Slice 0 and Slice 1 coverage.
 
 ### Recorded simplifications
 
@@ -410,16 +430,30 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - core assembly exposes stable name
   - core assembly is marked Godot independent
   - core assembly has no forbidden Godot, SQLite, or test-framework dependencies
+- Slice 1 package-free implementation tests in `tests/Genomancy.Tests`:
+  - ID/version value validation and stable comparison
+  - design-mode edits
+  - minimal valid body-plan graph validation and freeze
+  - runtime startup/freeze
+  - invalid runtime startup rejection before runtime state
+  - retained-source snapshot isolation
+  - post-freeze builder mutation rejection
+  - stable-ID reference resolution
+  - duplicate, missing-reference, and dependency-cycle diagnostics
+  - deterministic diagnostic ordering
+  - migration hook execution before freeze
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
 
 - Slice 0 project-foundation acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 1 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, and REQ-VALIDATE have Slice 1 coverage only; each remains broader than this slice and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
-- All requirement families in the requirements register except the limited Slice 0 core-boundary coverage noted above.
+- All requirement families in the requirements register except the limited Slice 0 and Slice 1 coverage noted above.
 
 ### Test layers required by the project
 
@@ -434,7 +468,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 |---|---|---|---|
 | OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 15 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
 | OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use a versioned preliminary codec, then stabilize in Slice 14. |
-| OPEN-003 | Definition immutability mechanism: immutable records/collections, generated snapshots, or both. | Slice 1 | Prototype against retained-reference mutation tests. |
+| OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Select a specified cross-runtime deterministic algorithm; do not rely on `System.Random` behavior as a serialized contract. |

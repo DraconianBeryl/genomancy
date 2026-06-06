@@ -31,6 +31,10 @@ mkdir -p \
 
 cd "$repo_root"
 
-dotnet restore Genomancy.sln --tl:off --disable-build-servers
-dotnet build Genomancy.sln --no-restore --tl:off --disable-build-servers
-dotnet run --no-restore --no-build --project tests/Genomancy.Tests/Genomancy.Tests.csproj
+dotnet build Genomancy.sln \
+  --tl:off \
+  --disable-build-servers \
+  -m:1 \
+  -p:RestoreBuildInParallel=false \
+  -p:BuildInParallel=false
+dotnet exec tests/Genomancy.Tests/bin/Debug/net9.0/Genomancy.Tests.dll
