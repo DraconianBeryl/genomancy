@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 10 - Population templates (next; refine before implementation) |
+| Current implementation slice | Slice 11 - Template groups and nested populations (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -71,6 +71,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 7 to compatibility metadata, inviable reproduction, clonal-copy reproduction, development timelines, gestation context, and numeric maternal effects. | Slice 7 implementation | Advances compatibility/development/expanded reproduction while deferring full hybrid morphology construction, nonstandard reproduction families, and gestational simulation. | Accepted |
 | 2026-06-06 | Refine Slice 8 to numeric sum/weighted-average expression, deterministic generated complements, and JSON-serializable runtime body-plan variants. | Slice 8 implementation | Advances advanced expression and variant state while deferring full expression policy language, generated complement resource graphs, and binary variant codecs. | Accepted |
 | 2026-06-06 | Refine Slice 9 to regional genome assignments, region-scoped expression, inheritance-site source resolution, and distinct chimeric material state. | Slice 9 implementation | Advances mosaic/chimera modeling while deferring region geometry, chimeric serialization, and full inheritance workflows. | Accepted |
+| 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -115,9 +116,9 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-ACQUIRED | External systems may request authored heritable changes through mutation interfaces without becoming core metaphysics. | 17, 20, 32 | In progress | 5 | Integration + negative tests |
 | REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | In progress | 3, 8 | Unit + resource tests |
 | REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | In progress | 3+ | Boundary tests |
-| REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | Planned | 10 | Unit + statistical tests |
+| REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | In progress | 10 | Unit + statistical tests |
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | Planned | 11 | Unit + simulation tests |
-| REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | Planned | 10 | Unit tests |
+| REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | In progress | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
 | REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | In progress | 4, 12 | Determinism + statistical tests |
@@ -673,9 +674,56 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 10 - Population templates
 
-Refine before implementation. Implement immutable statistical profiles, deterministic genome sampling, blending, forward simulation, biased inheritance/mutation hooks, and template creation from individuals.
+**Status:** Verified on 2026-06-06 for the refined Slice 10 acceptance criteria. Broader requirement families remain **In progress** where later slices add template groups, biased inheritance/mutation hooks, statistical tolerances, and binary codecs.
 
-**Requirements targeted:** REQ-TEMPLATE, REQ-TFROMIND, REQ-RANDOM, REQ-SERIAL.
+**Objective:** Create immutable statistical population-template versions that can deterministically produce genome versions.
+
+**Deliverables**
+
+- Define stable population-template IDs and template-version IDs.
+- Represent immutable group/gene/allele frequency profiles with optional numeric allele values.
+- Sample genome versions from templates using deterministic named random streams.
+- Generate multiple sampled genome versions with stable version and individual ID prefixes.
+- Blend two templates targeting the same system-definition version.
+- Create a population template from an individual genome without conflating the template and genome.
+- Serialize population template versions through deterministic JSON streams, buffers, and text.
+
+**Acceptance criteria**
+
+- Identical template, seed, genome ID, and individual ID produce byte-equivalent sampled genome serialization.
+- Generated populations use stable version/individual IDs and preserve system-definition version.
+- Blending combines allele weights deterministically and rejects incompatible system-definition versions.
+- Template-from-individual creates frequency-one entries from the source genome and does not mutate the genome.
+- JSON round trips preserve template ID, version ID, system-definition version, group/gene/allele frequencies, numeric values, and change summary.
+- JSON deserialization rejects incompatible system-definition versions.
+
+**Tests**
+
+- Deterministic sampling and sampled genome serialization test.
+- Blend weight combination test.
+- Stable generated population version/individual ID test.
+- Template-from-individual test.
+- Population template JSON round-trip and version-rejection test.
+
+**Implemented**
+
+- `PopulationTemplateId`, `PopulationTemplateVersionId`, `AlleleFrequency`, `GeneTemplate`, `GroupTemplate`, and `PopulationTemplateVersion`.
+- `PopulationTemplateService.SampleGenome`, `GeneratePopulation`, `Blend`, and `FromGenome`.
+- `PopulationTemplateJsonCodec` for stream, buffer, and text JSON operations with system-version compatibility checks.
+
+**Implementation simplification choices**
+
+- Sampling independently draws each allele rank from a gene template; linkage and correlated traits remain deferred.
+- Template blending combines allele weights and uses the maximum allele count for matching genes.
+- Population generation is deterministic repeated sampling, not a statistical simulation framework with tolerance reporting.
+- Biased inheritance and mutation hooks are not implemented in this slice.
+- Template serialization is JSON-only; binary template codecs remain deferred to serialization hardening.
+
+**Not yet implemented**
+
+- Template groups, nested populations, cross-template blend rates, structure-preserving nested simulation, biased inheritance/mutation hooks, statistical tolerance reports, binary template codecs, storage modules, and resource-test coverage.
+
+**Requirements advanced:** REQ-TEMPLATE, REQ-TFROMIND, REQ-RANDOM, REQ-SERIAL.
 
 ### Slice 11 - Template groups and nested populations
 
@@ -789,10 +837,15 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - mosaic genome state with primary and regional genome versions
   - region-scoped expression and inheritance-site source resolution
   - distinct chimeric material state
+- Slice 10 population templates:
+  - immutable population-template IDs, version IDs, and group/gene/allele frequency profiles
+  - deterministic genome sampling and stable population generation
+  - template blending and template-from-individual creation
+  - deterministic JSON codec for population template versions
 
 ### Not yet implemented
 
-- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, advanced mosaic/chimera behavior, and population templates.
+- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, advanced mosaic/chimera behavior, and nested template groups.
 - Regional geometry, mosaic/chimera serialization, overlapping mosaic expression, chimeric expression integration, and reproduction workflows from inheritance sites.
 - Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
@@ -812,6 +865,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 7 starts compatibility/development with in-memory rules and opaque gestation context; full authored resources and gestational simulation are deferred.
 - Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
+- Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -886,6 +940,12 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - regional expression from assigned and fallback genome versions
   - inheritance-site source resolution
   - chimeric material distinction from integrated runtime variants
+- Slice 10 package-free implementation tests in `tests/Genomancy.Tests`:
+  - deterministic template sampling and sampled genome serialization
+  - blend weight combination
+  - stable generated population version and individual IDs
+  - template-from-individual creation
+  - population template JSON round trip and version rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -900,8 +960,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 7 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 8 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 9 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 10 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 

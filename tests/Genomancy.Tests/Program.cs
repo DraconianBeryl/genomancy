@@ -11,6 +11,7 @@ using Genomancy.Core.Mutation;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
+using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
 
 var tests = new (string Name, Action Test)[]
@@ -74,6 +75,11 @@ var tests = new (string Name, Action Test)[]
     ("Mosaic regional expression uses assigned genome version", MosaicRegionalExpressionUsesAssignedGenomeVersion),
     ("Mosaic inheritance sites resolve regional genome sources", MosaicInheritanceSitesResolveRegionalGenomeSources),
     ("Chimeric material remains distinct from integrated variants", ChimericMaterialRemainsDistinctFromIntegratedVariants),
+    ("Population template sampling is deterministic and serializable", PopulationTemplateSamplingIsDeterministicAndSerializable),
+    ("Population template blending combines allele weights", PopulationTemplateBlendingCombinesAlleleWeights),
+    ("Population generation produces stable versioned genomes", PopulationGenerationProducesStableVersionedGenomes),
+    ("Population template can be created from individual genome", PopulationTemplateCanBeCreatedFromIndividualGenome),
+    ("Population template JSON round trip preserves immutable profile", PopulationTemplateJsonRoundTripPreservesImmutableProfile),
 };
 
 var failures = new List<string>();
@@ -1511,6 +1517,95 @@ static void ChimericMaterialRemainsDistinctFromIntegratedVariants()
     AssertEqual(Id("body.human"), variant.BaseBodyPlanId);
 }
 
+static void PopulationTemplateSamplingIsDeterministicAndSerializable()
+{
+    var template = CreatePopulationTemplate("template.people", "template.people.v1", lightWeight: 9, darkWeight: 1);
+    var first = PopulationTemplateService.SampleGenome(
+        template,
+        123,
+        GenomeVersionId.Parse("sample.1"),
+        ExternalIndividualId.Parse("external:sample"));
+    var second = PopulationTemplateService.SampleGenome(
+        template,
+        123,
+        GenomeVersionId.Parse("sample.1"),
+        ExternalIndividualId.Parse("external:sample"));
+
+    AssertEqual(GenomeJsonCodec.WriteVersionToText(first), GenomeJsonCodec.WriteVersionToText(second));
+    AssertEqual(TestVersion(), first.SystemDefinitionVersion);
+    AssertEqual(2, first.State.Groups.Single().GeneAlleles.Single().Entries.Count);
+}
+
+static void PopulationTemplateBlendingCombinesAlleleWeights()
+{
+    var first = CreatePopulationTemplate("template.first", "template.first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.second", "template.second.v1", lightWeight: 0, darkWeight: 10);
+    var blended = PopulationTemplateService.Blend(
+        first,
+        second,
+        0.25,
+        PopulationTemplateId.Parse("template.blended"),
+        PopulationTemplateVersionId.Parse("template.blended.v1"),
+        "blend");
+    var alleleWeights = blended.GroupTemplates
+        .Single(group => group.GroupId == Id("group.common"))
+        .GeneTemplates
+        .Single(gene => gene.GeneId == Id("gene.skin"))
+        .AlleleFrequencies
+        .ToDictionary(frequency => frequency.AlleleId, frequency => frequency.Weight);
+
+    AssertEqual(7.5, alleleWeights[Id("allele.skin.light")]);
+    AssertEqual(2.5, alleleWeights[Id("allele.skin.dark")]);
+    AssertEqual("blend", blended.ChangeSummary);
+}
+
+static void PopulationGenerationProducesStableVersionedGenomes()
+{
+    var template = CreatePopulationTemplate("template.people", "template.people.v1", lightWeight: 1, darkWeight: 1);
+    var generated = PopulationTemplateService.GeneratePopulation(template, 3, 50, "generated.", "external:generated.");
+
+    AssertEqual(3, generated.Count);
+    AssertEqual(GenomeVersionId.Parse("generated.0"), generated[0].Id);
+    AssertEqual(ExternalIndividualId.Parse("external:generated.2"), generated[2].IndividualId);
+    AssertEqual(TestVersion(), generated[1].SystemDefinitionVersion);
+}
+
+static void PopulationTemplateCanBeCreatedFromIndividualGenome()
+{
+    var genome = CreateMosaicGenomeVersion("genome.template-source", "allele.skin.dark");
+    var template = PopulationTemplateService.FromGenome(
+        genome,
+        PopulationTemplateId.Parse("template.from-individual"),
+        PopulationTemplateVersionId.Parse("template.from-individual.v1"),
+        "from individual");
+    var frequency = template.GroupTemplates
+        .Single(group => group.GroupId == Id("group.common"))
+        .GeneTemplates
+        .Single(gene => gene.GeneId == Id("gene.skin"))
+        .AlleleFrequencies
+        .Single();
+
+    AssertEqual(Id("allele.skin.dark"), frequency.AlleleId);
+    AssertEqual(1.0, frequency.Weight);
+    AssertEqual("from individual", template.ChangeSummary);
+}
+
+static void PopulationTemplateJsonRoundTripPreservesImmutableProfile()
+{
+    var template = CreatePopulationTemplate("template.people", "template.people.v1", lightWeight: 9, darkWeight: 1);
+    var text = PopulationTemplateJsonCodec.WriteToText(template);
+    var roundTrip = PopulationTemplateJsonCodec.ReadFromBuffer(
+        PopulationTemplateJsonCodec.WriteToBuffer(template),
+        TestVersion());
+
+    AssertEqual(template, roundTrip);
+    AssertEqual(text, PopulationTemplateJsonCodec.WriteToText(roundTrip));
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateJsonCodec.ReadFromBuffer(
+            PopulationTemplateJsonCodec.WriteToBuffer(template),
+            SystemDefinitionVersion.Parse("other.1")));
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -1753,6 +1848,31 @@ static GenomeVersion CreateMosaicGenomeVersion(string versionId, string skinAlle
                             ]),
                     ]),
             ]));
+}
+
+static PopulationTemplateVersion CreatePopulationTemplate(
+    string id,
+    string versionId,
+    double lightWeight,
+    double darkWeight)
+{
+    return new PopulationTemplateVersion(
+        PopulationTemplateId.Parse(id),
+        PopulationTemplateVersionId.Parse(versionId),
+        TestVersion(),
+        [
+            new GroupTemplate(
+                Id("group.common"),
+                [
+                    new GeneTemplate(
+                        Id("gene.skin"),
+                        2,
+                        [
+                            new AlleleFrequency(Id("allele.skin.light"), lightWeight, 0.25),
+                            new AlleleFrequency(Id("allele.skin.dark"), darkWeight, 0.75),
+                        ]),
+                ]),
+        ]);
 }
 
 static ReproductionResult Reproduce(
