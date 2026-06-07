@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 9 - Mosaicism and chimerism (next; refine before implementation) |
+| Current implementation slice | Slice 10 - Population templates (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -70,6 +70,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Add `HeritableObjectState` to `GenomeVersion` for non-ploidal objects and traces. | Slice 6 implementation | Integrates non-ploidal and trace state into immutable versioning and existing genome JSON/binary codecs without adding a separate persistence boundary. | Accepted |
 | 2026-06-06 | Refine Slice 7 to compatibility metadata, inviable reproduction, clonal-copy reproduction, development timelines, gestation context, and numeric maternal effects. | Slice 7 implementation | Advances compatibility/development/expanded reproduction while deferring full hybrid morphology construction, nonstandard reproduction families, and gestational simulation. | Accepted |
 | 2026-06-06 | Refine Slice 8 to numeric sum/weighted-average expression, deterministic generated complements, and JSON-serializable runtime body-plan variants. | Slice 8 implementation | Advances advanced expression and variant state while deferring full expression policy language, generated complement resource graphs, and binary variant codecs. | Accepted |
+| 2026-06-06 | Refine Slice 9 to regional genome assignments, region-scoped expression, inheritance-site source resolution, and distinct chimeric material state. | Slice 9 implementation | Advances mosaic/chimera modeling while deferring region geometry, chimeric serialization, and full inheritance workflows. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -106,7 +107,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-COMPAT | Explicit compatibility layers with fertile, sterile, inviable, and hybrid-morphology outcomes. | 9 | In progress | 7 | Unit + resource tests |
 | REQ-PLOIDY | Default/variable ploidy, ranked interpretation, shared-group models, and multi-parent roles. | 10, 28.8 | In progress | 4 | Unit + matrix tests |
 | REQ-REPRO | Policy-driven allele/group/object selection, ordinary and nonstandard reproduction, germline/generation sites. | 11 | In progress | 4, 7 | Unit + integration + simulation |
-| REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | Planned | 9 | Unit + integration |
+| REQ-MOSAIC | Mosaic/chimeric regions, expression, inheritance, and absorbed-twin genetic handling. | 12 | In progress | 9 | Unit + integration |
 | REQ-NONPLOID | Flags, counters, accumulators, archives, markers, weights, activation, transmission, mutation, and decay. | 4.10, 13 | In progress | 6 | Unit + resource tests |
 | REQ-TRACE | Trace structure, weighted transmission, activation, allele replacement effects, mutation, degradation, and loss. | 4.11, 14 | In progress | 6 | Unit + resource tests |
 | REQ-MUTATION | Policy-controlled event source, timing, targets, scope, value selection, overwrite, numeric update, copy number, and structural changes. | 15, 28.9-28.10 | In progress | 5 | Unit + policy coverage |
@@ -625,9 +626,50 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 9 - Mosaicism and chimerism
 
-Refine before implementation. Expected outcomes are regional genome assignment, contextual expression and inheritance from regions/sites, and explicit distinction between integrated body-plan variants and genetically distinct chimeric material.
+**Status:** Verified on 2026-06-06 for the refined Slice 9 acceptance criteria. Broader requirement families remain **In progress** where later slices add regional geometry, serialization, chimeric inheritance workflows, and resource tests.
 
-**Requirements targeted:** REQ-MOSAIC, REQ-EXPR, REQ-REPRO.
+**Objective:** Represent regional genome assignment and chimeric material without conflating chimerism with integrated body-plan variants.
+
+**Deliverables**
+
+- Define stable mosaic region IDs and inheritance site IDs.
+- Represent mosaic region assignments from region IDs to immutable genome versions.
+- Represent chimeric material as genetically distinct genome material with expressed region IDs.
+- Resolve expression in a region using the genome assigned to that region, falling back to the primary genome.
+- Resolve inheritance source genome from explicit inheritance-site assignments.
+- Keep chimeric material explicitly distinct from runtime body-plan variants.
+
+**Acceptance criteria**
+
+- Region-scoped expression uses the assigned region genome version.
+- Unassigned regions fall back to the primary genome version.
+- Inheritance sites can resolve to regional genome sources and fall back to primary when unmapped.
+- Chimeric material references a distinct genome version and is not treated as a runtime body-plan variant.
+
+**Tests**
+
+- Regional expression test for assigned and fallback regions.
+- Inheritance-site source resolution test.
+- Chimeric material distinction from integrated runtime variants test.
+
+**Implemented**
+
+- `MosaicRegionId`, `InheritanceSiteId`, `MosaicRegionAssignment`, `MosaicGenomeState`, `InheritanceSiteAssignment`, and `ChimericMaterialState`.
+- `MosaicExpressionService` for region-scoped gene expression using existing expression context/evaluators.
+- `MosaicInheritanceService` for inheritance-site genome-source resolution.
+
+**Implementation simplification choices**
+
+- Regions are stable IDs only; no geometry, tissue hierarchy, proportions beyond assignment coverage, or overlap resolution is implemented.
+- Mosaic state is not yet serialized as part of genome versions or a separate state resource.
+- Chimeric material is explicit runtime state and may mark whether it is integrated, but it does not yet participate in expression automatically.
+- Inheritance-site resolution returns a genome version only; it does not yet execute reproduction from region/site sources.
+
+**Not yet implemented**
+
+- Regional geometry, multi-region blending, overlapping mosaic expression, chimeric expression integration, absorbed-twin inheritance rules, mosaic/chimera serialization, mutation/repair over regions, reproduction workflows from inheritance sites, and resource-test coverage.
+
+**Requirements advanced:** REQ-MOSAIC, REQ-EXPR, REQ-REPRO.
 
 ### Slice 10 - Population templates
 
@@ -742,10 +784,16 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - generated complement policy/result/service for missing group state
   - runtime body-plan variant IDs/state/evaluation
   - deterministic JSON codec for runtime body-plan variants
+- Slice 9 mosaicism and chimerism:
+  - mosaic region IDs, inheritance site IDs, and region assignments
+  - mosaic genome state with primary and regional genome versions
+  - region-scoped expression and inheritance-site source resolution
+  - distinct chimeric material state
 
 ### Not yet implemented
 
-- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, mosaicism, chimerism, and population templates.
+- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, advanced mosaic/chimera behavior, and population templates.
+- Regional geometry, mosaic/chimera serialization, overlapping mosaic expression, chimeric expression integration, and reproduction workflows from inheritance sites.
 - Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
@@ -763,6 +811,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 6 stores non-ploidal/trace state directly on genome versions; authored non-ploidal definitions and trace effect policies are deferred.
 - Slice 7 starts compatibility/development with in-memory rules and opaque gestation context; full authored resources and gestational simulation are deferred.
 - Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
+- Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -833,6 +882,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - generated complement success, idempotence, and invalid-reference rejection
   - runtime body-plan variant availability with generated required groups
   - runtime body-plan variant JSON round trip and version rejection
+- Slice 9 package-free implementation tests in `tests/Genomancy.Tests`:
+  - regional expression from assigned and fallback genome versions
+  - inheritance-site source resolution
+  - chimeric material distinction from integrated runtime variants
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -846,8 +899,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 6 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 7 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 8 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 9 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 

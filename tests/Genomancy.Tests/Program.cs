@@ -6,6 +6,7 @@ using Genomancy.Core.Development;
 using Genomancy.Core.Expression;
 using Genomancy.Core.Genome;
 using Genomancy.Core.Inheritance;
+using Genomancy.Core.Mosaicism;
 using Genomancy.Core.Mutation;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
@@ -70,6 +71,9 @@ var tests = new (string Name, Action Test)[]
     ("Generated complements add missing groups and validate definitions", GeneratedComplementsAddMissingGroupsAndValidateDefinitions),
     ("Runtime body plan variants evaluate required generated groups", RuntimeBodyPlanVariantsEvaluateRequiredGeneratedGroups),
     ("Runtime body plan variant serialization preserves versioned state", RuntimeBodyPlanVariantSerializationPreservesVersionedState),
+    ("Mosaic regional expression uses assigned genome version", MosaicRegionalExpressionUsesAssignedGenomeVersion),
+    ("Mosaic inheritance sites resolve regional genome sources", MosaicInheritanceSitesResolveRegionalGenomeSources),
+    ("Chimeric material remains distinct from integrated variants", ChimericMaterialRemainsDistinctFromIntegratedVariants),
 };
 
 var failures = new List<string>();
@@ -1431,6 +1435,82 @@ static void RuntimeBodyPlanVariantSerializationPreservesVersionedState()
             SystemDefinitionVersion.Parse("other.1")));
 }
 
+static void MosaicRegionalExpressionUsesAssignedGenomeVersion()
+{
+    var definition = CreateExpressionDefinition().Freeze();
+    var primary = CreateGenomeVersion("genome.primary", null, "allele.skin.baseline");
+    var regional = CreateMosaicGenomeVersion("genome.regional", "allele.skin.dark");
+    var mosaic = new MosaicGenomeState(
+        primary,
+        [new MosaicRegionAssignment(MosaicRegionId.Parse("region.left-arm"), regional)]);
+    var result = MosaicExpressionService.EvaluateGeneInRegion(
+        mosaic,
+        definition,
+        MosaicRegionId.Parse("region.left-arm"),
+        Id("group.common"),
+        Id("gene.skin"),
+        Id("body.human"),
+        DevelopmentalPhaseId.Parse("phase.adult"),
+        new ExpressionExternalContext());
+
+    AssertEqual(GenomeVersionId.Parse("genome.regional"), result.GenomeVersion.Id);
+    AssertEqual(Id("allele.skin.dark"), result.Expression.ExpressedAlleleIds[0]);
+
+    var fallback = MosaicExpressionService.EvaluateGeneInRegion(
+        mosaic,
+        definition,
+        MosaicRegionId.Parse("region.unassigned"),
+        Id("group.common"),
+        Id("gene.skin"),
+        Id("body.human"),
+        DevelopmentalPhaseId.Parse("phase.adult"),
+        new ExpressionExternalContext());
+
+    AssertEqual(GenomeVersionId.Parse("genome.primary"), fallback.GenomeVersion.Id);
+}
+
+static void MosaicInheritanceSitesResolveRegionalGenomeSources()
+{
+    var primary = CreateMosaicGenomeVersion("genome.primary", "allele.skin.light");
+    var germline = CreateMosaicGenomeVersion("genome.germline", "allele.skin.dark");
+    var mosaic = new MosaicGenomeState(
+        primary,
+        [new MosaicRegionAssignment(MosaicRegionId.Parse("region.germline"), germline)]);
+    var resolved = MosaicInheritanceService.ResolveGenomeForInheritanceSite(
+        mosaic,
+        InheritanceSiteId.Parse("site.gamete"),
+        [new InheritanceSiteAssignment(InheritanceSiteId.Parse("site.gamete"), MosaicRegionId.Parse("region.germline"))]);
+    var fallback = MosaicInheritanceService.ResolveGenomeForInheritanceSite(
+        mosaic,
+        InheritanceSiteId.Parse("site.unknown"),
+        []);
+
+    AssertEqual(GenomeVersionId.Parse("genome.germline"), resolved.Id);
+    AssertEqual(GenomeVersionId.Parse("genome.primary"), fallback.Id);
+}
+
+static void ChimericMaterialRemainsDistinctFromIntegratedVariants()
+{
+    var primary = CreateMosaicGenomeVersion("genome.primary", "allele.skin.light");
+    var chimera = CreateMosaicGenomeVersion("genome.chimera", "allele.skin.dark");
+    var material = new ChimericMaterialState(
+        Id("chimera.absorbed-twin"),
+        chimera,
+        [MosaicRegionId.Parse("region.torso")],
+        isIntegratedBodyPlanVariant: false);
+    var variant = new RuntimeBodyPlanVariant(
+        BodyPlanVariantId.Parse("variant.integrated"),
+        TestVersion(),
+        Id("body.human"),
+        requiredGroupIds: [Id("group.common")]);
+    var mosaic = new MosaicGenomeState(primary, chimericMaterials: [material]);
+
+    AssertEqual(1, mosaic.ChimericMaterials.Count);
+    AssertTrue(!mosaic.ChimericMaterials[0].IsIntegratedBodyPlanVariant, "Chimeric material must remain distinct from integrated body-plan variants.");
+    AssertEqual(Id("chimera.absorbed-twin"), mosaic.ChimericMaterials[0].Id);
+    AssertEqual(Id("body.human"), variant.BaseBodyPlanId);
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -1653,6 +1733,26 @@ static GenomeVersion CreateHeritableParent(
                     ]),
             ]),
         heritableObjects: heritableObjectState);
+}
+
+static GenomeVersion CreateMosaicGenomeVersion(string versionId, string skinAllele)
+{
+    return new GenomeVersion(
+        GenomeVersionId.Parse(versionId),
+        TestVersion(),
+        ExternalIndividualId.Parse($"external:{versionId}"),
+        new GenomeState(
+            [
+                new GenomeGroupState(
+                    Id("group.common"),
+                    [
+                        new RankedAlleleSet(
+                            Id("gene.skin"),
+                            [
+                                new RankedAlleleEntry(Id(skinAllele), 0),
+                            ]),
+                    ]),
+            ]));
 }
 
 static ReproductionResult Reproduce(
