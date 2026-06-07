@@ -10,8 +10,8 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-06 |
-| Current implementation slice | Slice 11 - Template groups and nested populations (next; refine before implementation) |
+| Last ledger update | 2026-06-07 |
+| Current implementation slice | Slice 12 - Resource testing framework (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -72,6 +72,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 8 to numeric sum/weighted-average expression, deterministic generated complements, and JSON-serializable runtime body-plan variants. | Slice 8 implementation | Advances advanced expression and variant state while deferring full expression policy language, generated complement resource graphs, and binary variant codecs. | Accepted |
 | 2026-06-06 | Refine Slice 9 to regional genome assignments, region-scoped expression, inheritance-site source resolution, and distinct chimeric material state. | Slice 9 implementation | Advances mosaic/chimera modeling while deferring region geometry, chimeric serialization, and full inheritance workflows. | Accepted |
 | 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
+| 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -117,7 +118,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-EXPR | Contextual expression and activation using body plan, phase, ploidy, dependencies, epigenetics, and external context. | 18, 28.5-28.7 | In progress | 3, 8 | Unit + resource tests |
 | REQ-EXTERNAL | Container, genealogy, birth order, lineage facts, possession, and identity remain external inputs. | 19, 20, 28.7 | In progress | 3+ | Boundary tests |
 | REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | In progress | 10 | Unit + statistical tests |
-| REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | Planned | 11 | Unit + simulation tests |
+| REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | In progress | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | In progress | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
 | REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
@@ -727,9 +728,56 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 11 - Template groups and nested populations
 
-Refine before implementation. Implement nested template groups, group/template weights, cross-template blend rates, structure-preserving generation simulation, and immutable version outputs.
+**Status:** Verified on 2026-06-07 for the refined Slice 11 acceptance criteria. Broader requirement families remain **In progress** where later slices add template-group serialization, resource-authored validation, statistical tolerance reports, and inheritance/mutation hooks.
 
-**Requirements targeted:** REQ-TGROUP, REQ-TEMPLATE.
+**Objective:** Add immutable template-group versions that can generate nested population samples while preserving the chosen group/template structure.
+
+**Deliverables**
+
+- Define stable population-template-group IDs and group-version IDs.
+- Represent immutable group versions containing weighted direct templates and weighted child template groups.
+- Validate template-group system-definition version compatibility across direct templates and children.
+- Add optional deterministic cross-template blend policy with a blend occurrence rate and second-template blend weight.
+- Generate genome versions from a template group through deterministic weighted selection.
+- Generate multiple structure-preserving population samples with stable genome and individual ID prefixes.
+- Return immutable generated-output metadata containing the selected group path and primary/secondary source template IDs.
+
+**Acceptance criteria**
+
+- Nested group generation preserves the root-to-leaf template-group path in generated metadata.
+- Zero-weight direct templates and child groups are excluded from selection.
+- A blend rate of one deterministically blends with a distinct positive-weight direct template when one exists.
+- Identical group, seed, genome ID, and individual ID produce structurally equal generated outputs.
+- Template-group constructors reject incompatible system-definition versions.
+- Template-group versions and generated metadata are isolated from caller collection aliases.
+
+**Tests**
+
+- Nested weighted generation and generated path preservation test.
+- Forced deterministic cross-template blend test.
+- Version compatibility, zero-positive-weight rejection, and source-alias isolation test.
+
+**Implemented**
+
+- `PopulationTemplateGroupId` and `PopulationTemplateGroupVersionId`.
+- `WeightedPopulationTemplate`, `WeightedPopulationTemplateGroup`, and `CrossTemplateBlendPolicy`.
+- `PopulationTemplateGroupVersion` with direct templates, child groups, immutable copied collections, system-version validation, and structural equality.
+- `GeneratedTemplateGenome` with generated genome version, group path, selected source template IDs, blend metadata, immutable copied collections, and structural equality.
+- `PopulationTemplateGroupService.SampleGenome` and `GeneratePopulation` for deterministic weighted nested selection and optional cross-template blending.
+
+**Implementation simplification choices**
+
+- Child groups are embedded immutable group-version objects, not external references resolved through a resource registry.
+- Cross-template blending applies only among direct templates in the selected group; child-group selection delegates to the child group's own blend policy.
+- Blend policy uses a single occurrence rate and a fixed second-template weight, not pair-specific blend matrices.
+- Generated population simulation returns generated members and provenance metadata, not statistical tolerance reports or aggregate distributions.
+- Template-group serialization is not implemented in this slice.
+
+**Not yet implemented**
+
+- JSON/binary template-group codecs, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, biased inheritance/mutation hooks, and resource-test coverage.
+
+**Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-RANDOM.
 
 ### Slices 12-13 - Resource testing framework
 
@@ -842,12 +890,19 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - deterministic genome sampling and stable population generation
   - template blending and template-from-individual creation
   - deterministic JSON codec for population template versions
+- Slice 11 template groups and nested populations:
+  - immutable population-template-group IDs and version IDs
+  - weighted direct templates and weighted child template groups
+  - deterministic nested group sampling and stable generated population outputs
+  - optional deterministic cross-template blending among direct templates
+  - generated genome metadata preserving selected group path and source template IDs
 
 ### Not yet implemented
 
-- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, advanced mosaic/chimera behavior, and nested template groups.
+- Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, and advanced mosaic/chimera behavior.
 - Regional geometry, mosaic/chimera serialization, overlapping mosaic expression, chimeric expression integration, and reproduction workflows from inheritance sites.
 - Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
+- Template-group JSON/binary codecs, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, and structure-level statistical simulation reports.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
@@ -866,6 +921,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
 - Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
+- Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -946,6 +1002,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - stable generated population version and individual IDs
   - template-from-individual creation
   - population template JSON round trip and version rejection
+- Slice 11 package-free implementation tests in `tests/Genomancy.Tests`:
+  - nested weighted template-group generation and group-path preservation
+  - deterministic forced cross-template blending with structural output equality
+  - template-group version compatibility rejection, zero-positive-weight generation rejection, and source-alias isolation
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -961,8 +1021,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 8 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 9 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 10 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 11 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 

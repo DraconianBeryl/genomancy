@@ -80,6 +80,9 @@ var tests = new (string Name, Action Test)[]
     ("Population generation produces stable versioned genomes", PopulationGenerationProducesStableVersionedGenomes),
     ("Population template can be created from individual genome", PopulationTemplateCanBeCreatedFromIndividualGenome),
     ("Population template JSON round trip preserves immutable profile", PopulationTemplateJsonRoundTripPreservesImmutableProfile),
+    ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
+    ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
+    ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
 };
 
 var failures = new List<string>();
@@ -1604,6 +1607,108 @@ static void PopulationTemplateJsonRoundTripPreservesImmutableProfile()
         () => PopulationTemplateJsonCodec.ReadFromBuffer(
             PopulationTemplateJsonCodec.WriteToBuffer(template),
             SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void NestedTemplateGroupsPreserveGeneratedPopulationStructure()
+{
+    var nestedTemplate = CreatePopulationTemplate("template.nested", "template.nested.v1", lightWeight: 10, darkWeight: 0);
+    var child = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.child"),
+        PopulationTemplateGroupVersionId.Parse("template-group.child.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(nestedTemplate, 1)]);
+    var root = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.root"),
+        PopulationTemplateGroupVersionId.Parse("template-group.root.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(CreatePopulationTemplate("template.excluded", "template.excluded.v1", 0, 10), 0)],
+        [new WeightedPopulationTemplateGroup(child, 1)]);
+    var generated = PopulationTemplateGroupService.GeneratePopulation(
+        root,
+        2,
+        70,
+        "nested.generated.",
+        "external:nested.");
+
+    AssertEqual(2, generated.Count);
+    AssertEqual(GenomeVersionId.Parse("nested.generated.0"), generated[0].GenomeVersion.Id);
+    AssertEqual(ExternalIndividualId.Parse("external:nested.1"), generated[1].GenomeVersion.IndividualId);
+    AssertEqual(PopulationTemplateId.Parse("template.nested"), generated[0].PrimaryTemplateId);
+    AssertEqual(2, generated[0].GroupPath.Count);
+    AssertEqual(PopulationTemplateGroupId.Parse("template-group.root"), generated[0].GroupPath[0]);
+    AssertEqual(PopulationTemplateGroupId.Parse("template-group.child"), generated[0].GroupPath[1]);
+}
+
+static void TemplateGroupsApplyDeterministicCrossTemplateBlending()
+{
+    var first = CreatePopulationTemplate("template.blend-first", "template.blend-first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.blend-second", "template.blend-second.v1", lightWeight: 0, darkWeight: 10);
+    var group = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.blended"),
+        PopulationTemplateGroupVersionId.Parse("template-group.blended.v1"),
+        TestVersion(),
+        [
+            new WeightedPopulationTemplate(first, 1),
+            new WeightedPopulationTemplate(second, 1),
+        ],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(1, 0.25));
+    var firstSample = PopulationTemplateGroupService.SampleGenome(
+        group,
+        1234,
+        GenomeVersionId.Parse("template-group.sample"),
+        ExternalIndividualId.Parse("external:template-group.sample"));
+    var secondSample = PopulationTemplateGroupService.SampleGenome(
+        group,
+        1234,
+        GenomeVersionId.Parse("template-group.sample"),
+        ExternalIndividualId.Parse("external:template-group.sample"));
+
+    AssertTrue(firstSample.WasBlended, "A blend rate of one must blend when another positive-weight template is available.");
+    AssertTrue(firstSample.PrimaryTemplateId != firstSample.SecondaryTemplateId, "Cross-template blending must select a distinct secondary template.");
+    AssertEqual(firstSample, secondSample);
+    AssertTrue(
+        firstSample.GenomeVersion.ChangeSummary.Contains("templateGroupBlend=template-group.blended", StringComparison.Ordinal),
+        "Generated blended genome must retain its template-group blend provenance.");
+}
+
+static void TemplateGroupVersionsValidateCompatibilityAndIsolateAliases()
+{
+    var template = CreatePopulationTemplate("template.alias", "template.alias.v1", lightWeight: 1, darkWeight: 1);
+    var entries = new List<WeightedPopulationTemplate>
+    {
+        new(template, 1),
+    };
+    var group = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.alias"),
+        PopulationTemplateGroupVersionId.Parse("template-group.alias.v1"),
+        TestVersion(),
+        entries);
+
+    entries.Clear();
+
+    AssertEqual(1, group.Templates.Count);
+    AssertThrows<ArgumentException>(() => new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.incompatible"),
+        PopulationTemplateGroupVersionId.Parse("template-group.incompatible.v1"),
+        TestVersion(),
+        [
+            new WeightedPopulationTemplate(
+                new PopulationTemplateVersion(
+                    PopulationTemplateId.Parse("template.other-version"),
+                    PopulationTemplateVersionId.Parse("template.other-version.v1"),
+                    SystemDefinitionVersion.Parse("other.1"),
+                    template.GroupTemplates),
+                1),
+        ]));
+    AssertThrows<InvalidOperationException>(() => PopulationTemplateGroupService.SampleGenome(
+        new PopulationTemplateGroupVersion(
+            PopulationTemplateGroupId.Parse("template-group.zero"),
+            PopulationTemplateGroupVersionId.Parse("template-group.zero.v1"),
+            TestVersion(),
+            [new WeightedPopulationTemplate(template, 0)]),
+        1,
+        GenomeVersionId.Parse("template-group.zero.sample"),
+        ExternalIndividualId.Parse("external:template-group.zero.sample")));
 }
 
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
