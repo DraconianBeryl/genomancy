@@ -87,6 +87,9 @@ var tests = new (string Name, Action Test)[]
     ("Resource tests run validation fixtures and assertions", ResourceTestsRunValidationFixturesAndAssertions),
     ("Resource tests report deterministic failures", ResourceTestsReportDeterministicFailures),
     ("Resource tests support custom isolated steps", ResourceTestsSupportCustomIsolatedSteps),
+    ("Resource test JSON round trip materializes executable definitions", ResourceTestJsonRoundTripMaterializesExecutableDefinitions),
+    ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
+    ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
 };
 
 var failures = new List<string>();
@@ -1789,6 +1792,53 @@ static void ResourceTestsSupportCustomIsolatedSteps()
     AssertTrue(observedAlleleCounts.All(count => count == 1), "Each resource-test run must receive an isolated fresh fixture.");
 }
 
+static void ResourceTestJsonRoundTripMaterializesExecutableDefinitions()
+{
+    var valid = CreateResourceTestSpecification("resource-test.serialized.valid", invalidGene: false, tags: ["baseline", "fast"]);
+    var invalid = CreateResourceTestSpecification("resource-test.serialized.invalid", invalidGene: true, tags: ["negative"]);
+    var text = ResourceTestJsonCodec.WriteToText([invalid, valid]);
+    var roundTrip = ResourceTestJsonCodec.ReadFromBuffer(ResourceTestJsonCodec.WriteToBuffer([invalid, valid]));
+    var definitions = roundTrip.Select(specification => specification.ToDefinition()).ToArray();
+    var result = ResourceTestRunner.Run(definitions);
+
+    AssertEqual(text, ResourceTestJsonCodec.WriteToText(roundTrip));
+    AssertEqual(2, roundTrip.Count);
+    AssertEqual(ResourceTestId.Parse("resource-test.serialized.invalid"), roundTrip[0].Id);
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertEqual(ResourceTestStatus.Passed, result.Cases[0].Status);
+    AssertEqual(ResourceTestStatus.Passed, result.Cases[1].Status);
+}
+
+static void ResourceTestJsonRejectsUnsupportedOrMalformedSpecs()
+{
+    var unsupported = new ResourceTestSpecification(
+        ResourceTestId.Parse("resource-test.serialized.unsupported"),
+        TestVersion(),
+        CreateResourceTestFixture(invalidGene: false),
+        [new ResourceTestStepSpecification("unknownStep")]);
+    var malformedJson = System.Text.Encoding.UTF8.GetBytes("""
+        {"envelopeVersion":1,"tests":[{"id":"","systemDefinitionVersion":"test.1","fixture":{},"steps":[]}]}
+        """);
+
+    AssertThrows<GenomeSerializationException>(() => unsupported.ToDefinition());
+    AssertThrows<GenomeSerializationException>(() => ResourceTestJsonCodec.ReadFromBuffer(malformedJson));
+    AssertThrows<GenomeSerializationException>(() => ResourceTestJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"tests":[]}"""u8));
+}
+
+static void ResourceTestRunnerFiltersByTagsDeterministically()
+{
+    var fast = CreateResourceTestSpecification("resource-test.tags.fast", invalidGene: false, tags: ["fast"]).ToDefinition();
+    var slow = CreateResourceTestSpecification("resource-test.tags.slow", invalidGene: false, tags: ["slow"]).ToDefinition();
+    var excluded = CreateResourceTestSpecification("resource-test.tags.excluded", invalidGene: false, tags: ["fast", "skip"]).ToDefinition();
+    var result = ResourceTestRunner.Run(
+        [slow, excluded, fast],
+        new ResourceTestRunOptions(includeTags: ["fast"], excludeTags: ["skip"]));
+
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertEqual(1, result.Cases.Count);
+    AssertEqual(ResourceTestId.Parse("resource-test.tags.fast"), result.Cases[0].TestId);
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -2055,6 +2105,61 @@ static PopulationTemplateVersion CreatePopulationTemplate(
                             new AlleleFrequency(Id("allele.skin.dark"), darkWeight, 0.75),
                         ]),
                 ]),
+        ]);
+}
+
+static ResourceTestSpecification CreateResourceTestSpecification(string id, bool invalidGene, IEnumerable<string> tags)
+{
+    var steps = invalidGene
+        ? new[]
+        {
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ValidateSystemDefinitionKind),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationResultKind, expectedValid: false),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationDiagnosticKind, diagnosticCode: "GENE_UNKNOWN_ALLELE"),
+        }
+        : new[]
+        {
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ValidateSystemDefinitionKind),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationResultKind, expectedValid: true),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationDiagnosticKind, diagnosticCode: "GENE_UNKNOWN_ALLELE", mustBePresent: false),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.FreezeSystemDefinitionKind),
+        };
+
+    return new ResourceTestSpecification(
+        ResourceTestId.Parse(id),
+        TestVersion(),
+        CreateResourceTestFixture(invalidGene),
+        steps,
+        displayName: id,
+        tags: tags);
+}
+
+static ResourceTestFixtureSpecification CreateResourceTestFixture(bool invalidGene)
+{
+    return new ResourceTestFixtureSpecification(
+        alleles: invalidGene
+            ? []
+            : [new AlleleResourceSpecification(Id("allele.skin.baseline"), "Baseline skin")],
+        genes:
+        [
+            new GeneResourceSpecification(
+                Id("gene.skin"),
+                [Id(invalidGene ? "allele.skin.missing" : "allele.skin.baseline")],
+                "Skin"),
+        ],
+        groups:
+        [
+            new GroupResourceSpecification(
+                Id("group.common"),
+                geneIds: [Id("gene.skin")],
+                displayName: "Common"),
+        ],
+        bodyPlans:
+        [
+            new BodyPlanResourceSpecification(
+                Id("body.human"),
+                requiredGroupIds: [Id("group.common")],
+                displayName: "Human"),
         ]);
 }
 

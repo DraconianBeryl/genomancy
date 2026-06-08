@@ -2,11 +2,16 @@ namespace Genomancy.Core.ResourceTesting;
 
 public static class ResourceTestRunner
 {
-    public static ResourceTestRunResult Run(IEnumerable<ResourceTestDefinition> definitions)
+    public static ResourceTestRunResult Run(
+        IEnumerable<ResourceTestDefinition> definitions,
+        ResourceTestRunOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
 
+        options ??= new ResourceTestRunOptions();
+
         var results = definitions
+            .Where(options.ShouldRun)
             .OrderBy(definition => definition.Id)
             .Select(RunCase)
             .ToArray();

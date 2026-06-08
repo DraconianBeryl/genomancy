@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-07 |
-| Current implementation slice | Slice 13 - Resource testing framework expansion (next; refine before implementation) |
+| Current implementation slice | Slice 14 - Serialization hardening and optional storage modules (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -74,6 +74,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
 | 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
 | 2026-06-07 | Refine Slice 12 to an in-memory resource-test runner with fixture factories, validation/freeze operations, validation assertions, custom step extensibility, deterministic result ordering, and structured diagnostics. | Slice 12 implementation | Establishes the first resource-testing framework surface while deferring serialized test resources, resource loading, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions. | Accepted |
+| 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -835,9 +836,54 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 13 - Resource testing framework expansion
 
-Refine before implementation. Expand resource testing with serialized test definitions or a typed resource-test DTO layer, resource loading boundaries, broader operations/assertions, validation reachability and policy coverage checks, deterministic simulation/statistical assertions, reproducibility packets, tags/severity filtering, snapshots, fuzz/matrix execution, isolation controls, and runtime-safe subsets.
+**Status:** Verified on 2026-06-08 for the refined Slice 13 acceptance criteria. Broader requirement families remain **In progress** where later slices add resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets.
 
-**Requirements targeted:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
+**Objective:** Add a typed serialized resource-test specification boundary that can materialize designer-authored validation tests into the Slice 12 runner.
+
+**Deliverables**
+
+- Define typed resource-test specifications for test metadata, system-definition fixtures, and supported steps.
+- Represent serializable allele, gene, group, and body-plan fixture entries.
+- Materialize resource-test specifications into executable `ResourceTestDefinition` instances.
+- Add a versioned deterministic JSON codec for resource-test specifications over streams, buffers, and text.
+- Reject unsupported serialized step kinds and malformed required JSON properties.
+- Add runner tag include/exclude filtering while preserving deterministic case ordering.
+
+**Acceptance criteria**
+
+- Resource-test specifications round trip through JSON with deterministic ordering.
+- Round-tripped specifications can materialize and execute as normal resource-test definitions.
+- Serialized valid and expected-invalid fixtures can both pass their resource-test assertions.
+- Unsupported step kinds are rejected before execution.
+- Missing required serialized fields are rejected with structured serialization errors.
+- Include/exclude tag filtering runs only matching cases in deterministic ID order.
+
+**Tests**
+
+- Resource-test JSON round-trip and materialized execution test.
+- Unsupported step and malformed JSON rejection test.
+- Deterministic tag include/exclude filtering test.
+
+**Implemented**
+
+- `ResourceTestSpecification`, `ResourceTestFixtureSpecification`, `ResourceTestStepSpecification`, and fixture resource specification records.
+- `ResourceTestJsonCodec` for versioned deterministic JSON stream/buffer/text operations.
+- Materialization from serialized step kinds to validation, freeze, validation-result, and validation-diagnostic steps.
+- `ResourceTestRunOptions` and `ResourceTestRunner.Run` filtering by include/exclude tags.
+
+**Implementation simplification choices**
+
+- Serialized fixtures cover the current core authored definition kernel only: alleles, genes, groups, and body plans.
+- Serialized steps cover the Slice 12 built-in validation/freeze/assertion operations only.
+- JSON is the only resource-test serialization format in this slice; binary test codecs remain deferred.
+- Tag filtering is include/exclude only; severity filtering and runtime-safe subsets remain deferred.
+- Resource-test results/failure packets are still in-memory only and are not serialized.
+
+**Not yet implemented**
+
+- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, statistical assertions/tolerances, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
 ### Slice 14 - Serialization hardening and optional storage modules
 
@@ -956,6 +1002,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - validation/freeze steps and validation assertion steps
   - structured resource-test diagnostics
   - custom step extension point and fresh fixture isolation per run
+- Slice 13 resource testing framework expansion:
+  - typed serialized resource-test specifications for definition fixtures and supported steps
+  - deterministic resource-test JSON codec over streams, buffers, and text
+  - materialization from serialized specifications into executable resource-test definitions
+  - tag include/exclude filtering for resource-test runs
 
 ### Not yet implemented
 
@@ -966,7 +1017,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-test JSON/binary codecs, resource-pack loading, serialized operation/assertion registries, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, and runtime-safe subset handling.
+- Resource-test binary codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
 - Final serialization/storage modules beyond Slice 2 preliminary core codecs.
 - All Godot integration.
 - Statistical simulation/tolerance tests and reproducibility packets.
@@ -983,6 +1034,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
 - Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
 - Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, statistical tolerances, and reproducibility packets are deferred.
+- Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -1071,6 +1123,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - valid resource-test fixture with validation assertions and freeze
   - expected invalid fixture and unexpected-valid failure diagnostics with deterministic ordering
   - custom resource-test step extension and fresh fixture isolation across repeated runs
+- Slice 13 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test JSON round trip and materialized execution
+  - unsupported serialized step and malformed JSON rejection
+  - deterministic include/exclude tag filtering
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1088,13 +1144,14 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 10 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 11 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 12 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 13 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files do not exist yet; Slice 12 covers only the in-memory framework foundation.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text; repository-level resource-pack loading and file layout do not exist yet.
 
 ### Test layers required by the project
 
