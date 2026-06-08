@@ -8,14 +8,18 @@ interfaces as they are implemented.
 
 Implemented optional boundaries:
 
+- `Genomancy.Godot` depends on `Genomancy.Core` and provides package-free
+  Godot-facing resource documents, resource packages, import/export bridges, and
+  runtime startup diagnostics. It intentionally does not move genetics behavior
+  into adapter types.
 - `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
   atomic JSON-file persistence using caller-supplied core stream codecs.
 
 The following boundaries are reserved for later slices:
 
 - Optional custom binary-file and SQLite storage modules.
-- A Godot adapter that converts between Godot-facing resources/nodes and core
-  types without moving genetics behavior into Godot-specific classes.
+- GodotSharp `Resource` subclasses and editor/runtime plugin packaging that wrap
+  the current adapter once package/runtime constraints are selected.
 
 ## Dependency Direction
 

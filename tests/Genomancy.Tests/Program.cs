@@ -14,6 +14,7 @@ using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
+using Genomancy.Godot;
 using Genomancy.Storage.JsonFile;
 
 var tests = new (string Name, Action Test)[]
@@ -94,6 +95,9 @@ var tests = new (string Name, Action Test)[]
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
+    ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
+    ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
+    ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
 
 var failures = new List<string>();
@@ -1905,6 +1909,83 @@ static void JsonFileStoragePersistsResourceTestSpecsOutsideCore()
     }
 }
 
+static void GodotAdapterRoundTripsGenomeAndTemplateDocuments()
+{
+    var genome = CreateGenomeVersion("genome.godot", null, "allele.skin.baseline");
+    var genomeDocument = GodotResourceBridge.ExportGenomeVersion(
+        GodotResourcePath.Parse("res://genomancy/genome.godot.json"),
+        genome);
+    var importedGenome = GodotResourceBridge.ImportGenomeVersion(genomeDocument, TestVersion());
+    var template = CreatePopulationTemplate("template.godot", "template.godot.v1", lightWeight: 4, darkWeight: 1);
+    var templateDocument = GodotResourceBridge.ExportPopulationTemplate(
+        GodotResourcePath.Parse("user://genomancy/template.godot.json"),
+        template);
+    var importedTemplate = GodotResourceBridge.ImportPopulationTemplate(templateDocument, TestVersion());
+
+    AssertEqual(GodotResourceKind.GenomeVersion, genomeDocument.Kind);
+    AssertEqual(TestVersion().Value, genomeDocument.SystemDefinitionVersion);
+    AssertTrue(importedGenome.IsSuccess, GodotDiagnosticsToString(importedGenome.Diagnostics));
+    AssertGenomeVersionsEqual(genome, importedGenome.Value ?? throw new InvalidOperationException("Genome import failed."));
+    AssertEqual(GodotResourceKind.PopulationTemplate, templateDocument.Kind);
+    AssertTrue(importedTemplate.IsSuccess, GodotDiagnosticsToString(importedTemplate.Diagnostics));
+    AssertEqual(template, importedTemplate.Value);
+    AssertThrows<ArgumentException>(() => GodotResourcePath.Parse("genomancy/genome.json"));
+}
+
+static void GodotAdapterReportsImportDiagnostics()
+{
+    var templateDocument = GodotResourceBridge.ExportPopulationTemplate(
+        GodotResourcePath.Parse("res://genomancy/template.godot.json"),
+        CreatePopulationTemplate("template.godot-diagnostic", "template.godot-diagnostic.v1", lightWeight: 1, darkWeight: 1));
+    var mismatchedKind = GodotResourceBridge.ImportGenomeVersion(templateDocument, TestVersion());
+    var wrongVersionGenome = GodotResourceBridge.ExportGenomeVersion(
+        GodotResourcePath.Parse("res://genomancy/genome.other-version.json"),
+        CreateGenomeVersion("genome.other-version", null, "allele.skin.baseline", systemVersion: "other.1"));
+    var failedImport = GodotResourceBridge.ImportGenomeVersion(wrongVersionGenome, TestVersion());
+
+    AssertTrue(!mismatchedKind.IsSuccess, "Kind mismatch must return diagnostics.");
+    AssertEqual("GODOT_RESOURCE_KIND_MISMATCH", mismatchedKind.Diagnostics.Single().Code);
+    AssertTrue(!failedImport.IsSuccess, "Version mismatch must return diagnostics.");
+    AssertEqual("GODOT_RESOURCE_IMPORT_FAILED", failedImport.Diagnostics.Single().Code);
+}
+
+static void GodotAdapterBridgesResourceTestsAndRuntimeStartup()
+{
+    var specs = new[]
+    {
+        CreateResourceTestSpecification("resource-test.godot.valid", invalidGene: false, tags: ["godot"]),
+    };
+    var document = GodotResourceBridge.ExportResourceTests(
+        GodotResourcePath.Parse("res://genomancy/resource-tests.json"),
+        specs);
+    var imported = GodotResourceBridge.ImportResourceTests(document);
+    var package = new GodotResourcePackage(
+        "genomancy.test-package",
+        [
+            document,
+            GodotResourceBridge.ExportPopulationTemplate(
+                GodotResourcePath.Parse("res://genomancy/template.package.json"),
+                CreatePopulationTemplate("template.package", "template.package.v1", lightWeight: 1, darkWeight: 1)),
+        ]);
+    var resourceTestResult = ResourceTestRunner.Run((imported.Value ?? []).Select(specification => specification.ToDefinition()));
+    var runtime = GodotRuntimeBridge.StartRuntime(CreateMinimalHumanBuilder());
+    var invalidBuilder = new SystemDefinitionBuilder(TestVersion());
+    invalidBuilder.AddGene(new GeneDefinition(Id("gene.invalid"), [Id("allele.missing")]));
+    var invalidRuntime = GodotRuntimeBridge.StartRuntime(invalidBuilder);
+
+    AssertEqual(GodotResourceKind.ResourceTests, document.Kind);
+    AssertEqual("godot", document.Tags.Single());
+    AssertEqual(2, package.Resources.Count);
+    AssertEqual(document, package.Get(GodotResourcePath.Parse("res://genomancy/resource-tests.json")));
+    AssertThrows<ArgumentException>(() => new GodotResourcePackage("duplicate", [document, document]));
+    AssertTrue(imported.IsSuccess, GodotDiagnosticsToString(imported.Diagnostics));
+    AssertEqual(ResourceTestStatus.Passed, resourceTestResult.Status);
+    AssertTrue(runtime.IsSuccess, GodotDiagnosticsToString(runtime.Diagnostics));
+    AssertEqual(GenomancyMode.Runtime, runtime.Value?.Mode);
+    AssertTrue(!invalidRuntime.IsSuccess, "Invalid runtime startup must return diagnostics.");
+    AssertEqual("GENE_UNKNOWN_ALLELE", invalidRuntime.Diagnostics.Single().Code);
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -2410,6 +2491,11 @@ static void AssertContainsMutationDiagnostic(IEnumerable<GenomeMutationDiagnosti
 }
 
 static string DiagnosticsToString(IEnumerable<ValidationDiagnostic> diagnostics)
+{
+    return string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"));
+}
+
+static string GodotDiagnosticsToString(IEnumerable<GodotAdapterDiagnostic> diagnostics)
 {
     return string.Join(", ", diagnostics.Select(diagnostic => $"{diagnostic.Code}:{diagnostic.Path}"));
 }

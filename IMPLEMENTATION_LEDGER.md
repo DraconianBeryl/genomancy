@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 15 - Godot adapter and packaging (next; refine before implementation) |
+| Current implementation slice | Slice 16 - Statistical simulation and reproducibility hardening (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -76,6 +76,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-07 | Refine Slice 12 to an in-memory resource-test runner with fixture factories, validation/freeze operations, validation assertions, custom step extensibility, deterministic result ordering, and structured diagnostics. | Slice 12 implementation | Establishes the first resource-testing framework surface while deferring serialized test resources, resource loading, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions. | Accepted |
 | 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
 | 2026-06-08 | Refine Slice 14 to shared preliminary binary envelopes for genomes/templates/resource tests and an optional atomic JSON-file storage adapter in a separate assembly. | Slice 14 implementation | Advances serialization and storage boundaries without adding provider dependencies to core; SQLite, migrations, custom compact binary storage, and remaining model codecs are deferred. | Accepted |
+| 2026-06-08 | Refine Slice 15 to a package-free `Genomancy.Godot` adapter with Godot-style resource documents/packages, core codec import/export, runtime startup diagnostics, and package metadata. | Slice 15 implementation | Advances Godot integration without adding a GodotSharp dependency; actual Godot `Resource` subclasses, editor plugins, and export packaging are deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -129,7 +130,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 14 | Round-trip + compatibility |
 | REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | In progress | 14 | Integration tests |
-| REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 15 | Build + adapter tests |
+| REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | In progress | 15 | Build + adapter tests |
 
 ## Incremental implementation plan
 
@@ -943,9 +944,62 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 15 - Godot adapter and packaging
 
-Refine against the selected Godot/.NET versions. Add a thin adapter for Godot authoring/runtime workflows, package import/export, diagnostics, and engine-facing conversions while preserving a Godot-free core.
+**Status:** Verified on 2026-06-08 for the refined Slice 15 acceptance criteria. Broader Godot integration remains **In progress** where later work adds GodotSharp `Resource` subclasses, editor plugins, and export/package integration.
 
-**Requirements targeted:** REQ-GODOT, REQ-MODE, REQ-SERIAL.
+**Objective:** Add a thin optional adapter assembly that exposes Godot-facing resource documents and startup diagnostics while preserving a Godot-free core.
+
+**Deliverables**
+
+- Add separate `Genomancy.Godot` adapter assembly that depends on `Genomancy.Core`.
+- Define validated Godot-style resource paths for `res://` and `user://` paths.
+- Define Godot-facing resource document and package DTOs with deterministic ordering and duplicate-path rejection.
+- Export/import genome versions, population templates, and resource-test specifications through existing core JSON codecs.
+- Convert import failures and runtime startup validation failures into stable Godot adapter diagnostics.
+- Add basic package metadata for the adapter project.
+- Add the adapter assembly to the solution and verification build.
+
+**Acceptance criteria**
+
+- Genome and population-template documents round trip through the adapter.
+- Resource-test specifications export/import through a Godot resource document and remain executable.
+- Resource packages order documents deterministically and reject duplicate paths.
+- Kind mismatches and serialization/version failures return diagnostics instead of throwing through the adapter boundary.
+- Runtime startup through the adapter returns a runtime system for valid definitions and validation diagnostics for invalid definitions.
+- `Genomancy.Core` remains Godot-free; adapter dependency direction is one-way from adapter to core.
+
+**Tests**
+
+- Godot adapter genome/template export/import round-trip test.
+- Godot adapter kind mismatch and import failure diagnostics test.
+- Godot adapter resource-test export/import, resource package, and runtime startup diagnostics test.
+
+**Implemented**
+
+- `Genomancy.Godot` optional adapter project with NuGet package metadata.
+- `GodotResourcePath`, `GodotResourceKind`, `GodotResourceDocument`, and `GodotResourcePackage`.
+- `GodotAdapterDiagnostic` and `GodotAdapterResult<T>`.
+- `GodotResourceBridge` for genome, population-template, and resource-test import/export.
+- `GodotRuntimeBridge` for runtime startup with validation diagnostics.
+- Solution/test references covering the adapter assembly.
+
+**Implementation simplification choices**
+
+- The adapter is package-free and does not reference GodotSharp in this slice.
+- Godot resources are represented as ordinary DTOs that can be wrapped by Godot scripts or future `Resource` subclasses.
+- Import/export uses existing JSON codecs only; binary Godot resource import/export is deferred.
+- Package metadata is basic project metadata; no NuGet package creation, Godot addon folder layout, or editor plugin is produced.
+
+**Not yet implemented**
+
+- GodotSharp `Resource` subclasses, editor inspector integration, Godot addon folder layout, exported `.tres`/`.res` resources, Godot runtime node helpers, binary resource import/export, Godot-specific package publishing, and engine-version compatibility matrices.
+
+**Requirements advanced:** REQ-GODOT, REQ-MODE, REQ-SERIAL.
+
+### Slice 16 - Statistical simulation and reproducibility hardening
+
+Refine before implementation. Add statistical simulation/tolerance assertions, reproducibility packets, resource limits for simulation workloads, and focused coverage for seeded distribution behavior across reproduction, templates, and resource tests.
+
+**Requirements targeted:** REQ-RANDOM, REQ-RTEST, REQ-TEMPLATE, REQ-REPRO.
 
 ### Later hardening and release work
 
@@ -1062,6 +1116,12 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - population-template and resource-test binary codecs
   - optional `Genomancy.Storage.JsonFile` assembly
   - generic atomic JSON-file save/load adapter
+- Slice 15 Godot adapter and packaging:
+  - optional `Genomancy.Godot` assembly
+  - Godot-style resource paths, documents, and packages
+  - import/export bridges for genomes, population templates, and resource tests
+  - runtime startup diagnostics for Godot-facing callers
+  - basic adapter package metadata
 
 ### Not yet implemented
 
@@ -1074,7 +1134,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Resource-test result/failure packet codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
-- All Godot integration.
+- GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, and Godot engine-version matrices.
 - Statistical simulation/tolerance tests and reproducibility packets.
 
 ### Recorded simplifications
@@ -1091,6 +1151,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, statistical tolerances, and reproducibility packets are deferred.
 - Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
 - Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
+- Slice 15 uses package-free Godot-facing DTOs and bridges; GodotSharp resource classes, editor plugins, addon layout, binary import/export, and engine-specific packaging are deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1186,6 +1247,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - population-template binary round trip, invalid/truncated header, and system-version rejection
   - resource-test binary round trip, executable materialization, and truncated header
   - optional JSON-file storage persistence and loaded-resource execution
+- Slice 15 package-free implementation tests in `tests/Genomancy.Tests`:
+  - Godot adapter genome/template document round trips
+  - Godot adapter kind mismatch and import failure diagnostics
+  - Godot adapter resource-test import/export, resource package behavior, and runtime startup diagnostics
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1205,8 +1270,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 12 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 13 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 14 acceptance criteria are verified by `scripts/verify.sh`.
-- REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- Slice 15 acceptance criteria are verified by `scripts/verify.sh`.
+- REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
@@ -1224,7 +1290,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 | ID | Decision or risk | Needed by | Current handling |
 |---|---|---|---|
-| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 15 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
+| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Later GodotSharp/editor plugin refinement | Slice 15 adapter is package-free and targets `net9.0`; GodotSharp resource/editor packaging compatibility remains open. |
 | OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use a versioned preliminary codec, then stabilize in Slice 14. |
 | OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |

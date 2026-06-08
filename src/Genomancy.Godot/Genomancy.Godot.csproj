@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Genomancy.Core\Genomancy.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <PackageId>Genomancy.Godot</PackageId>
+    <Title>Genomancy Godot Adapter</Title>
+    <Description>Godot-facing resource document and runtime startup adapters for Genomancy.Core.</Description>
+    <PackageTags>godot;genetics;adapter</PackageTags>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+</Project>

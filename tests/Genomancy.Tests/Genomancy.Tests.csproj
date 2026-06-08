@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Genomancy.Core\Genomancy.Core.csproj" />
+    <ProjectReference Include="..\..\src\Genomancy.Godot\Genomancy.Godot.csproj" />
     <ProjectReference Include="..\..\src\Genomancy.Storage.JsonFile\Genomancy.Storage.JsonFile.csproj" />
   </ItemGroup>
 
