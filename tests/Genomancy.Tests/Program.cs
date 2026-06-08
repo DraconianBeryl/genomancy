@@ -92,6 +92,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource tests report deterministic failures", ResourceTestsReportDeterministicFailures),
     ("Resource tests support custom isolated steps", ResourceTestsSupportCustomIsolatedSteps),
     ("Resource statistical failures produce reproducibility packets", ResourceStatisticalFailuresProduceReproducibilityPackets),
+    ("Resource test JSON serializes statistical assertions", ResourceTestJsonSerializesStatisticalAssertions),
     ("Resource test JSON round trip materializes executable definitions", ResourceTestJsonRoundTripMaterializesExecutableDefinitions),
     ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
@@ -1870,6 +1871,46 @@ static void ResourceStatisticalFailuresProduceReproducibilityPackets()
     AssertEqual(
         ReproducibilityPacketJsonCodec.WriteToText(packet),
         ReproducibilityPacketJsonCodec.WriteToText(roundTrip));
+}
+
+static void ResourceTestJsonSerializesStatisticalAssertions()
+{
+    var template = CreatePopulationTemplate("template.serialized-statistical", "template.serialized-statistical.v1", 1, 1);
+    var spec = new ResourceTestSpecification(
+        ResourceTestId.Parse("resource-test.serialized-statistical"),
+        TestVersion(),
+        CreateResourceTestFixture(invalidGene: false),
+        [
+            new ResourceTestStepSpecification(
+                ResourceTestStepSpecification.AssertPopulationTemplateFrequencyKind,
+                populationTemplateFrequencyAssertion: new PopulationTemplateFrequencyAssertionSpecification(
+                    template,
+                    Id("group.common"),
+                    Id("gene.skin"),
+                    Id("allele.skin.light"),
+                    sampleCount: 100,
+                    seed: 42,
+                    new StatisticalTolerance(expectedProportion: 1, absoluteTolerance: 0),
+                    new SimulationResourceLimits(maximumSamples: 100))),
+        ],
+        tags: ["serialized", "statistical"]);
+    var text = ResourceTestJsonCodec.WriteToText([spec]);
+    var roundTrip = ResourceTestJsonCodec.ReadFromBuffer(ResourceTestJsonCodec.WriteToBuffer([spec]));
+    var result = ResourceTestRunner.Run(roundTrip.Select(test => test.ToDefinition()));
+    var testCase = result.Cases.Single();
+    var packet = testCase.ReproducibilityPackets.Single();
+
+    AssertTrue(
+        text.Contains("assertPopulationTemplateFrequency", StringComparison.Ordinal),
+        "Serialized resource-test JSON must include the statistical step kind.");
+    AssertTrue(
+        text.Contains("populationTemplateFrequencyAssertion", StringComparison.Ordinal),
+        "Serialized resource-test JSON must include the statistical assertion payload.");
+    AssertEqual(text, ResourceTestJsonCodec.WriteToText(roundTrip));
+    AssertEqual(ResourceTestStatus.Failed, result.Status);
+    AssertEqual("RESOURCE_TEST_STATISTICAL_TOLERANCE_FAILED", testCase.Diagnostics.Single().Code);
+    AssertEqual("resource-test.serialized-statistical", packet.TestIdentifier);
+    AssertEqual(42UL, packet.Seed);
 }
 
 static void ResourceTestJsonRoundTripMaterializesExecutableDefinitions()

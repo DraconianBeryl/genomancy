@@ -1,4 +1,7 @@
+using Genomancy.Core.Definitions;
 using Genomancy.Core.Serialization;
+using Genomancy.Core.Simulation;
+using Genomancy.Core.Templates;
 
 namespace Genomancy.Core.ResourceTesting;
 
@@ -8,13 +11,15 @@ public sealed record ResourceTestStepSpecification
     public const string FreezeSystemDefinitionKind = "freezeSystemDefinition";
     public const string ExpectValidationResultKind = "expectValidationResult";
     public const string ExpectValidationDiagnosticKind = "expectValidationDiagnostic";
+    public const string AssertPopulationTemplateFrequencyKind = "assertPopulationTemplateFrequency";
 
     public ResourceTestStepSpecification(
         string kind,
         string name = "",
         bool? expectedValid = null,
         string? diagnosticCode = null,
-        bool mustBePresent = true)
+        bool mustBePresent = true,
+        PopulationTemplateFrequencyAssertionSpecification? populationTemplateFrequencyAssertion = null)
     {
         if (string.IsNullOrWhiteSpace(kind))
         {
@@ -26,6 +31,7 @@ public sealed record ResourceTestStepSpecification
         ExpectedValid = expectedValid;
         DiagnosticCode = diagnosticCode;
         MustBePresent = mustBePresent;
+        PopulationTemplateFrequencyAssertion = populationTemplateFrequencyAssertion;
     }
 
     public string Kind { get; }
@@ -37,6 +43,8 @@ public sealed record ResourceTestStepSpecification
     public string? DiagnosticCode { get; }
 
     public bool MustBePresent { get; }
+
+    public PopulationTemplateFrequencyAssertionSpecification? PopulationTemplateFrequencyAssertion { get; }
 
     public IResourceTestStep ToStep()
     {
@@ -51,8 +59,25 @@ public sealed record ResourceTestStepSpecification
                 Required(DiagnosticCode, "diagnosticCode"),
                 MustBePresent,
                 Name),
+            AssertPopulationTemplateFrequencyKind => ToPopulationTemplateFrequencyStep(),
             _ => throw new GenomeSerializationException($"Unsupported resource test step kind '{Kind}'."),
         };
+    }
+
+    private AssertPopulationTemplateFrequencyStep ToPopulationTemplateFrequencyStep()
+    {
+        var assertion = PopulationTemplateFrequencyAssertion
+            ?? throw new GenomeSerializationException("Population template frequency assertion step requires a statistical assertion payload.");
+
+        return new AssertPopulationTemplateFrequencyStep(
+            assertion.Template,
+            assertion.GroupId,
+            assertion.GeneId,
+            assertion.AlleleId,
+            assertion.SampleCount,
+            assertion.Seed,
+            assertion.Tolerance,
+            assertion.Limits);
     }
 
     private static string Required(string? value, string propertyName)
@@ -64,4 +89,46 @@ public sealed record ResourceTestStepSpecification
 
         return value;
     }
+}
+
+public sealed record PopulationTemplateFrequencyAssertionSpecification
+{
+    public PopulationTemplateFrequencyAssertionSpecification(
+        PopulationTemplateVersion template,
+        ResourceId groupId,
+        ResourceId geneId,
+        ResourceId alleleId,
+        int sampleCount,
+        ulong seed,
+        StatisticalTolerance tolerance,
+        SimulationResourceLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(tolerance);
+
+        Template = template;
+        GroupId = groupId;
+        GeneId = geneId;
+        AlleleId = alleleId;
+        SampleCount = sampleCount;
+        Seed = seed;
+        Tolerance = tolerance;
+        Limits = limits;
+    }
+
+    public PopulationTemplateVersion Template { get; }
+
+    public ResourceId GroupId { get; }
+
+    public ResourceId GeneId { get; }
+
+    public ResourceId AlleleId { get; }
+
+    public int SampleCount { get; }
+
+    public ulong Seed { get; }
+
+    public StatisticalTolerance Tolerance { get; }
+
+    public SimulationResourceLimits? Limits { get; }
 }

@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 16 - Statistical simulation and reproducibility hardening (verified); later hardening/release work is next |
+| Current implementation slice | Slice 17 - Serialized statistical resource-test assertions (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -77,7 +77,8 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
 | 2026-06-08 | Refine Slice 14 to shared preliminary binary envelopes for genomes/templates/resource tests and an optional atomic JSON-file storage adapter in a separate assembly. | Slice 14 implementation | Advances serialization and storage boundaries without adding provider dependencies to core; SQLite, migrations, custom compact binary storage, and remaining model codecs are deferred. | Accepted |
 | 2026-06-08 | Refine Slice 15 to a package-free `Genomancy.Godot` adapter with Godot-style resource documents/packages, core codec import/export, runtime startup diagnostics, and package metadata. | Slice 15 implementation | Advances Godot integration without adding a GodotSharp dependency; actual Godot `Resource` subclasses, editor plugins, and export packaging are deferred. | Accepted |
-| 2026-06-08 | Refine Slice 16 to bounded population-template allele-frequency simulation, absolute statistical tolerances, resource-test statistical assertions, and deterministic JSON reproducibility packets. | Slice 16 implementation | Establishes reusable statistical/reproducibility primitives while deferring reproduction distributions, template-group simulation reports, confidence models, outlier policies, and serialized statistical step specifications. | Accepted |
+| 2026-06-08 | Refine Slice 16 to bounded population-template allele-frequency simulation, absolute statistical tolerances, resource-test statistical assertions, and deterministic JSON reproducibility packets. | Slice 16 implementation | Establishes reusable statistical/reproducibility primitives while deferring reproduction distributions, template-group simulation reports, confidence models, outlier policies, and, until Slice 17, serialized statistical step specifications. | Accepted |
+| 2026-06-08 | Refine Slice 17 to serialized resource-test specifications for the Slice 16 population-template frequency assertion. | Slice 17 implementation | Makes designer-authored JSON/binary resource-test specs able to carry embedded population-template statistical assertions while deferring broader statistical registries, external template references, result codecs, and resource-pack persistence. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -833,7 +834,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions beyond the Slice 16 in-memory population-template assertion, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
+- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions beyond the Slice 17 serialized population-template frequency assertion, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
 
@@ -884,7 +885,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 16 in-memory population-template assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
+- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 17 population-template frequency assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
@@ -998,7 +999,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 16 - Statistical simulation and reproducibility hardening
 
-**Status:** Verified on 2026-06-08 for the refined Slice 16 acceptance criteria. Broader statistical simulation remains **In progress** where later work adds reproduction distributions, template-group reports, confidence models, and serialized statistical test specifications.
+**Status:** Verified on 2026-06-08 for the refined Slice 16 acceptance criteria. Broader statistical simulation remains **In progress** where later work adds reproduction distributions, template-group reports, confidence models, and broader statistical test registries.
 
 **Objective:** Establish the first bounded statistical simulation and failure-reproduction path using existing deterministic population-template sampling.
 
@@ -1046,13 +1047,61 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Each ranked allele entry is one observation. Correlated/linkage-aware observations remain deferred with richer template simulation.
 - The simulation runs sequentially and stores aggregate counts only; it does not retain generated genomes unless a future failing-invariant operation requires them.
 - Reproducibility packets embed canonical population-template JSON as the input fixture and expose JSON only.
-- The statistical resource-test step is an in-memory custom step; serialized resource-test specifications do not yet include template fixtures or statistical step kinds.
+- The statistical resource-test step started as an in-memory custom step in Slice 16; Slice 17 adds serialized specifications for this specific step while broader statistical registries remain deferred.
 
 **Not yet implemented**
 
-- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, mutation/trace simulation, confidence interpretations, maximum outlier policies, advisory statistical failures, parallel execution, elapsed-time/allocation limits, serialized statistical step specifications, or resource-pack failure-packet persistence.
+- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, mutation/trace simulation, confidence interpretations, maximum outlier policies, advisory statistical failures, parallel execution, elapsed-time/allocation limits, broader serialized statistical step registries, or resource-pack failure-packet persistence.
 
 **Requirements advanced:** REQ-RANDOM, REQ-RTEST, REQ-TEMPLATE, REQ-REPRO.
+
+### Slice 17 - Serialized statistical resource-test assertions
+
+**Status:** Verified on 2026-06-08 for the refined Slice 17 acceptance criteria. Broader statistical and resource-pack behavior remains **In progress**.
+
+**Objective:** Allow designer-authored resource-test JSON/binary specifications to carry the Slice 16 population-template allele-frequency assertion and materialize it into an executable resource-test step.
+
+**Deliverables**
+
+- Add a typed serialized step kind for population-template allele-frequency assertions.
+- Represent the required statistical assertion payload in resource-test specifications: embedded template, target group/gene/allele, sample count, seed, tolerance, and optional sample-count limit.
+- Extend the deterministic resource-test JSON codec to read/write the statistical assertion payload.
+- Preserve binary resource-test support through the existing JSON-wrapped binary resource-test codec.
+- Materialize serialized statistical assertions into `AssertPopulationTemplateFrequencyStep`.
+
+**Acceptance criteria**
+
+- Resource-test JSON round trips a population-template frequency assertion deterministically.
+- A round-tripped serialized statistical assertion materializes into an executable resource-test definition.
+- Executing the materialized assertion produces the same structured statistical failure diagnostic and reproducibility packet path as the in-memory step.
+- The serialized payload uses stable resource IDs and embedded immutable population-template content.
+
+**Tests**
+
+- Resource-test JSON round trip for a serialized population-template frequency assertion.
+- Materialized serialized statistical assertion execution with expected failure diagnostic and reproducibility packet metadata.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestStepSpecification.AssertPopulationTemplateFrequencyKind`.
+- `PopulationTemplateFrequencyAssertionSpecification`.
+- Resource-test JSON envelope support for embedded population-template frequency assertion payloads.
+- Materialization of serialized statistical assertions into `AssertPopulationTemplateFrequencyStep`.
+- Existing resource-test binary codec compatibility via the JSON payload.
+
+**Implementation simplification choices**
+
+- Population templates are embedded directly in the resource-test step payload instead of referenced from a resource pack or fixture registry.
+- Only the Slice 16 population-template allele-frequency assertion is serialized; broader statistical operation registries remain deferred.
+- Optional limits serialize only the maximum sample count currently supported by `SimulationResourceLimits`.
+- Result/failure-packet persistence remains runtime result state only; no resource-test result codec is added.
+
+**Not yet implemented**
+
+- External template fixture references, template-group statistical assertions, reproduction/transmission distribution assertions, mutation/trace statistical assertions, confidence/outlier statistical policies, serialized result/failure-packet codecs, resource-pack loading, or resource-pack failure-packet persistence.
+
+**Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-TEMPLATE, REQ-SERIAL.
 
 ### Later hardening and release work
 
@@ -1181,6 +1230,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - aggregate ranked-allele observation reporting
   - resource-test statistical assertion diagnostics
   - deterministic JSON reproducibility packets exposed on failed resource-test cases
+- Slice 17 serialized statistical resource-test assertions:
+  - serialized resource-test step kind for population-template frequency assertions
+  - embedded population-template statistical assertion payloads in resource-test JSON
+  - materialization of serialized statistical assertions into executable resource-test steps
+  - resource-test binary compatibility through the existing JSON-wrapped binary codec
 
 ### Not yet implemented
 
@@ -1191,10 +1245,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-test result codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions beyond in-memory population-template allele frequency, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
+- Resource-test result codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, and Godot engine-version matrices.
-- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and serialized statistical resource-test steps.
+- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
 
 ### Recorded simplifications
 
@@ -1211,7 +1265,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
 - Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
 - Slice 15 uses package-free Godot-facing DTOs and bridges; GodotSharp resource classes, editor plugins, addon layout, binary import/export, and engine-specific packaging are deferred.
-- Slice 16 starts statistical coverage with sequential population-template allele-frequency sampling, absolute tolerances, sample-count limits, and JSON failure packets; broader simulation domains, confidence/outlier models, and serialized statistical steps are deferred.
+- Slice 16 starts statistical coverage with sequential population-template allele-frequency sampling, absolute tolerances, sample-count limits, and JSON failure packets; broader simulation domains and confidence/outlier models are deferred.
+- Slice 17 embeds population-template statistical assertion data directly in serialized resource-test steps; external template references, broader statistical registries, and result/failure-packet codecs are deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1316,6 +1371,9 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - configured simulation maximum-sample rejection
   - resource-test statistical failure diagnostic and reproducibility packet creation
   - deterministic reproducibility packet JSON round trip
+- Slice 17 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test JSON round trip for serialized population-template frequency assertions
+  - materialized serialized statistical assertion execution with expected diagnostic and reproducibility packet metadata
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1337,13 +1395,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 14 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 15 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 16 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 17 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text; repository-level resource-pack loading and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion; repository-level resource-pack loading and file layout do not exist yet.
 
 ### Test layers required by the project
 

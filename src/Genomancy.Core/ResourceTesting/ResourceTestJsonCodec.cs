@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Serialization;
+using Genomancy.Core.Simulation;
+using Genomancy.Core.Templates;
 
 namespace Genomancy.Core.ResourceTesting;
 
@@ -120,7 +122,8 @@ public static class ResourceTestJsonCodec
             step.Name == step.Kind ? null : step.Name,
             step.ExpectedValid,
             step.DiagnosticCode,
-            step.MustBePresent);
+            step.MustBePresent,
+            ToPopulationTemplateFrequencyEnvelope(step.PopulationTemplateFrequencyAssertion));
     }
 
     private static IReadOnlyList<ResourceTestSpecification> FromEnvelope(ResourceTestEnvelope envelope)
@@ -175,7 +178,95 @@ public static class ResourceTestJsonCodec
             step.Name ?? string.Empty,
             step.ExpectedValid,
             step.DiagnosticCode,
-            step.MustBePresent ?? true);
+            step.MustBePresent ?? true,
+            FromPopulationTemplateFrequencyEnvelope(step.PopulationTemplateFrequencyAssertion));
+    }
+
+    private static PopulationTemplateFrequencyAssertionEnvelope? ToPopulationTemplateFrequencyEnvelope(
+        PopulationTemplateFrequencyAssertionSpecification? assertion)
+    {
+        if (assertion is null)
+        {
+            return null;
+        }
+
+        return new PopulationTemplateFrequencyAssertionEnvelope(
+            ToPopulationTemplateEnvelope(assertion.Template),
+            assertion.GroupId.Value,
+            assertion.GeneId.Value,
+            assertion.AlleleId.Value,
+            assertion.SampleCount,
+            assertion.Seed,
+            assertion.Tolerance.ExpectedProportion,
+            assertion.Tolerance.AbsoluteTolerance,
+            assertion.Limits?.MaximumSamples);
+    }
+
+    private static PopulationTemplateFrequencyAssertionSpecification? FromPopulationTemplateFrequencyEnvelope(
+        PopulationTemplateFrequencyAssertionEnvelope? assertion)
+    {
+        if (assertion is null)
+        {
+            return null;
+        }
+
+        var template = FromPopulationTemplateEnvelope(assertion.Template
+            ?? throw new GenomeSerializationException("Population template frequency assertion requires 'template'."));
+
+        return new PopulationTemplateFrequencyAssertionSpecification(
+            template,
+            ResourceId.Parse(Required(assertion.GroupId, "populationTemplateFrequencyAssertion.groupId")),
+            ResourceId.Parse(Required(assertion.GeneId, "populationTemplateFrequencyAssertion.geneId")),
+            ResourceId.Parse(Required(assertion.AlleleId, "populationTemplateFrequencyAssertion.alleleId")),
+            assertion.SampleCount,
+            assertion.Seed,
+            new StatisticalTolerance(assertion.ExpectedProportion, assertion.AbsoluteTolerance),
+            assertion.MaximumSamples is null ? null : new SimulationResourceLimits(assertion.MaximumSamples.Value));
+    }
+
+    private static PopulationTemplateEnvelope ToPopulationTemplateEnvelope(PopulationTemplateVersion template)
+    {
+        return new PopulationTemplateEnvelope(
+            template.Id.Value,
+            template.VersionId.Value,
+            template.SystemDefinitionVersion.Value,
+            template.ChangeSummary,
+            template.GroupTemplates
+                .OrderBy(group => group.GroupId)
+                .Select(group => new PopulationTemplateGroupEnvelope(
+                    group.GroupId.Value,
+                    group.GeneTemplates
+                        .OrderBy(gene => gene.GeneId)
+                        .Select(gene => new PopulationTemplateGeneEnvelope(
+                            gene.GeneId.Value,
+                            gene.AlleleCount,
+                            gene.AlleleFrequencies
+                                .OrderBy(frequency => frequency.AlleleId)
+                                .Select(frequency => new PopulationTemplateAlleleEnvelope(
+                                    frequency.AlleleId.Value,
+                                    frequency.Weight,
+                                    frequency.NumericValue))
+                                .ToArray()))
+                        .ToArray()))
+                .ToArray());
+    }
+
+    private static PopulationTemplateVersion FromPopulationTemplateEnvelope(PopulationTemplateEnvelope template)
+    {
+        return new PopulationTemplateVersion(
+            PopulationTemplateId.Parse(Required(template.Id, "populationTemplateFrequencyAssertion.template.id")),
+            PopulationTemplateVersionId.Parse(Required(template.VersionId, "populationTemplateFrequencyAssertion.template.versionId")),
+            SystemDefinitionVersion.Parse(Required(template.SystemDefinitionVersion, "populationTemplateFrequencyAssertion.template.systemDefinitionVersion")),
+            (template.Groups ?? []).Select(group => new GroupTemplate(
+                ResourceId.Parse(Required(group.GroupId, "populationTemplateFrequencyAssertion.template.groupId")),
+                (group.Genes ?? []).Select(gene => new GeneTemplate(
+                    ResourceId.Parse(Required(gene.GeneId, "populationTemplateFrequencyAssertion.template.geneId")),
+                    gene.AlleleCount,
+                    (gene.Alleles ?? []).Select(allele => new AlleleFrequency(
+                        ResourceId.Parse(Required(allele.AlleleId, "populationTemplateFrequencyAssertion.template.alleleId")),
+                        allele.Weight,
+                        allele.NumericValue)))))),
+            template.ChangeSummary ?? string.Empty);
     }
 
     private static GeneExpressionStrategy ParseExpressionStrategy(string? value)
@@ -241,5 +332,38 @@ public static class ResourceTestJsonCodec
         string? Name,
         bool? ExpectedValid,
         string? DiagnosticCode,
-        bool? MustBePresent);
+        bool? MustBePresent,
+        PopulationTemplateFrequencyAssertionEnvelope? PopulationTemplateFrequencyAssertion);
+
+    private sealed record PopulationTemplateFrequencyAssertionEnvelope(
+        PopulationTemplateEnvelope? Template,
+        string? GroupId,
+        string? GeneId,
+        string? AlleleId,
+        int SampleCount,
+        ulong Seed,
+        double ExpectedProportion,
+        double AbsoluteTolerance,
+        int? MaximumSamples);
+
+    private sealed record PopulationTemplateEnvelope(
+        string? Id,
+        string? VersionId,
+        string? SystemDefinitionVersion,
+        string? ChangeSummary,
+        IReadOnlyList<PopulationTemplateGroupEnvelope>? Groups);
+
+    private sealed record PopulationTemplateGroupEnvelope(
+        string? GroupId,
+        IReadOnlyList<PopulationTemplateGeneEnvelope>? Genes);
+
+    private sealed record PopulationTemplateGeneEnvelope(
+        string? GeneId,
+        int AlleleCount,
+        IReadOnlyList<PopulationTemplateAlleleEnvelope>? Alleles);
+
+    private sealed record PopulationTemplateAlleleEnvelope(
+        string? AlleleId,
+        double Weight,
+        double? NumericValue);
 }
