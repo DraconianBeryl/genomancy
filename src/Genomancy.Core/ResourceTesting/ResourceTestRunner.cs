@@ -60,6 +60,11 @@ public static class ResourceTestRunner
             ? ResourceTestStatus.Failed
             : ResourceTestStatus.Passed;
 
-        return new ResourceTestCaseResult(definition.Id, status, diagnostics, definition.Tags);
+        return new ResourceTestCaseResult(
+            definition.Id,
+            status,
+            diagnostics,
+            definition.Tags,
+            context?.ReproducibilityPackets);
     }
 }

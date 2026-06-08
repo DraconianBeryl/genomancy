@@ -12,6 +12,7 @@ using Genomancy.Core.ResourceTesting;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
+using Genomancy.Core.Simulation;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
 using Genomancy.Godot;
@@ -83,12 +84,14 @@ var tests = new (string Name, Action Test)[]
     ("Population generation produces stable versioned genomes", PopulationGenerationProducesStableVersionedGenomes),
     ("Population template can be created from individual genome", PopulationTemplateCanBeCreatedFromIndividualGenome),
     ("Population template JSON round trip preserves immutable profile", PopulationTemplateJsonRoundTripPreservesImmutableProfile),
+    ("Population template simulation is deterministic and bounded", PopulationTemplateSimulationIsDeterministicAndBounded),
     ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
     ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
     ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
     ("Resource tests run validation fixtures and assertions", ResourceTestsRunValidationFixturesAndAssertions),
     ("Resource tests report deterministic failures", ResourceTestsReportDeterministicFailures),
     ("Resource tests support custom isolated steps", ResourceTestsSupportCustomIsolatedSteps),
+    ("Resource statistical failures produce reproducibility packets", ResourceStatisticalFailuresProduceReproducibilityPackets),
     ("Resource test JSON round trip materializes executable definitions", ResourceTestJsonRoundTripMaterializesExecutableDefinitions),
     ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
@@ -1624,6 +1627,42 @@ static void PopulationTemplateJsonRoundTripPreservesImmutableProfile()
             SystemDefinitionVersion.Parse("other.1")));
 }
 
+static void PopulationTemplateSimulationIsDeterministicAndBounded()
+{
+    var template = CreatePopulationTemplate("template.simulation", "template.simulation.v1", lightWeight: 3, darkWeight: 1);
+    var tolerance = new StatisticalTolerance(expectedProportion: 0.75, absoluteTolerance: 0.08);
+    var first = PopulationTemplateSimulationService.MeasureAlleleFrequency(
+        template,
+        Id("group.common"),
+        Id("gene.skin"),
+        Id("allele.skin.light"),
+        sampleCount: 1_000,
+        seed: 8675309,
+        tolerance);
+    var second = PopulationTemplateSimulationService.MeasureAlleleFrequency(
+        template,
+        Id("group.common"),
+        Id("gene.skin"),
+        Id("allele.skin.light"),
+        sampleCount: 1_000,
+        seed: 8675309,
+        tolerance);
+
+    AssertTrue(first.IsWithinTolerance, first.FailurePacket?.Diagnostic ?? "Expected simulation to pass.");
+    AssertEqual(first, second);
+    AssertEqual(2_000, first.ObservationCount);
+    AssertThrows<ArgumentOutOfRangeException>(() =>
+        PopulationTemplateSimulationService.MeasureAlleleFrequency(
+            template,
+            Id("group.common"),
+            Id("gene.skin"),
+            Id("allele.skin.light"),
+            sampleCount: 11,
+            seed: 1,
+            tolerance,
+            new SimulationResourceLimits(maximumSamples: 10)));
+}
+
 static void NestedTemplateGroupsPreserveGeneratedPopulationStructure()
 {
     var nestedTemplate = CreatePopulationTemplate("template.nested", "template.nested.v1", lightWeight: 10, darkWeight: 0);
@@ -1798,6 +1837,39 @@ static void ResourceTestsSupportCustomIsolatedSteps()
     AssertEqual(ResourceTestStatus.Passed, second.Status);
     AssertEqual(2, observedAlleleCounts.Count);
     AssertTrue(observedAlleleCounts.All(count => count == 1), "Each resource-test run must receive an isolated fresh fixture.");
+}
+
+static void ResourceStatisticalFailuresProduceReproducibilityPackets()
+{
+    var template = CreatePopulationTemplate("template.resource-statistical", "template.resource-statistical.v1", 1, 1);
+    var test = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.statistical-failure"),
+        CreateMinimalHumanBuilder,
+        [
+            new AssertPopulationTemplateFrequencyStep(
+                template,
+                Id("group.common"),
+                Id("gene.skin"),
+                Id("allele.skin.light"),
+                sampleCount: 100,
+                seed: 42,
+                new StatisticalTolerance(expectedProportion: 1, absoluteTolerance: 0)),
+        ],
+        tags: ["simulation", "statistical"]);
+    var result = ResourceTestRunner.Run([test]);
+    var testCase = result.Cases.Single();
+    var packet = testCase.ReproducibilityPackets.Single();
+    var roundTrip = ReproducibilityPacketJsonCodec.ReadFromBuffer(
+        ReproducibilityPacketJsonCodec.WriteToBuffer(packet));
+
+    AssertEqual(ResourceTestStatus.Failed, result.Status);
+    AssertEqual("RESOURCE_TEST_STATISTICAL_TOLERANCE_FAILED", testCase.Diagnostics.Single().Code);
+    AssertEqual(test.Id.Value, packet.TestIdentifier);
+    AssertEqual(42UL, packet.Seed);
+    AssertEqual(packet, roundTrip);
+    AssertEqual(
+        ReproducibilityPacketJsonCodec.WriteToText(packet),
+        ReproducibilityPacketJsonCodec.WriteToText(roundTrip));
 }
 
 static void ResourceTestJsonRoundTripMaterializesExecutableDefinitions()

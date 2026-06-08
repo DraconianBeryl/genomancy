@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 16 - Statistical simulation and reproducibility hardening (next; refine before implementation) |
+| Current implementation slice | Slice 16 - Statistical simulation and reproducibility hardening (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -77,6 +77,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
 | 2026-06-08 | Refine Slice 14 to shared preliminary binary envelopes for genomes/templates/resource tests and an optional atomic JSON-file storage adapter in a separate assembly. | Slice 14 implementation | Advances serialization and storage boundaries without adding provider dependencies to core; SQLite, migrations, custom compact binary storage, and remaining model codecs are deferred. | Accepted |
 | 2026-06-08 | Refine Slice 15 to a package-free `Genomancy.Godot` adapter with Godot-style resource documents/packages, core codec import/export, runtime startup diagnostics, and package metadata. | Slice 15 implementation | Advances Godot integration without adding a GodotSharp dependency; actual Godot `Resource` subclasses, editor plugins, and export packaging are deferred. | Accepted |
+| 2026-06-08 | Refine Slice 16 to bounded population-template allele-frequency simulation, absolute statistical tolerances, resource-test statistical assertions, and deterministic JSON reproducibility packets. | Slice 16 implementation | Establishes reusable statistical/reproducibility primitives while deferring reproduction distributions, template-group simulation reports, confidence models, outlier policies, and serialized statistical step specifications. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -334,7 +335,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 4 - Deterministic inheritance and ordinary reproduction
 
-**Status:** Verified on 2026-06-06 for the Slice 4 acceptance criteria. Broader requirement families remain **In progress** where later slices add nonstandard reproduction, full compatibility, mutation during inheritance, gestation, non-ploidal objects, traces, resource tests, and statistical tolerances.
+**Status:** Verified on 2026-06-06 for the Slice 4 acceptance criteria. Broader requirement families remain **In progress** where later slices add nonstandard reproduction, full compatibility, mutation during inheritance, gestation, non-ploidal objects, traces, resource tests, and reproduction-specific statistical tolerances.
 
 **Objective:** Produce offspring genome versions through explicit parent roles and deterministic selection.
 
@@ -391,7 +392,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Reproduction policy is an in-memory request object, not a serialized designer-authored policy resource.
 - Offspring version ancestry is summarized in `ChangeSummary`; the existing `GenomeVersion.ParentVersionId` remains unused for multi-parent offspring because it is single-parent-shaped from Slice 2.
 - Allele selection currently chooses from each contributing parent role independently; crossover/linkage and whole-object group selection are deferred.
-- Weighted-selection distribution has deterministic boundary coverage, but no statistical tolerance framework exists yet.
+- Weighted-selection distribution has deterministic boundary coverage; Slice 16 later adds the first template-focused statistical tolerance framework, but reproduction-specific distribution tolerances remain deferred.
 
 **Not yet implemented**
 
@@ -832,7 +833,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions/tolerances, simulation reproducibility packets, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
+- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions beyond the Slice 16 in-memory population-template assertion, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
 
@@ -883,7 +884,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, statistical assertions/tolerances, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
+- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 16 in-memory population-template assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
@@ -997,9 +998,61 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 16 - Statistical simulation and reproducibility hardening
 
-Refine before implementation. Add statistical simulation/tolerance assertions, reproducibility packets, resource limits for simulation workloads, and focused coverage for seeded distribution behavior across reproduction, templates, and resource tests.
+**Status:** Verified on 2026-06-08 for the refined Slice 16 acceptance criteria. Broader statistical simulation remains **In progress** where later work adds reproduction distributions, template-group reports, confidence models, and serialized statistical test specifications.
 
-**Requirements targeted:** REQ-RANDOM, REQ-RTEST, REQ-TEMPLATE, REQ-REPRO.
+**Objective:** Establish the first bounded statistical simulation and failure-reproduction path using existing deterministic population-template sampling.
+
+**Deliverables**
+
+- Define absolute statistical proportion tolerances with explicit expected, minimum, and maximum values.
+- Define configurable simulation sample-count limits and reject invalid or over-limit workloads before sampling.
+- Measure a target allele's observed frequency across all ranked allele entries generated from a population template.
+- Preserve seeded determinism by using the existing template sampler and stable per-sample seed sequence.
+- Return aggregate sample count, observation count, match count, observed proportion, tolerance, and optional failure packet.
+- Define minimal reproducibility packets containing resource-set version, test ID, seed, operation path, serialized template input, failed assertion, expected/actual values, and diagnostic.
+- Serialize reproducibility packets through deterministic versioned JSON stream/buffer/text APIs.
+- Add a resource-test statistical assertion step that records a structured diagnostic and reproducibility packet on tolerance failure.
+- Expose resource-test failure packets on case results.
+
+**Acceptance criteria**
+
+- Identical template, target, seed, sample count, tolerance, and limits produce structurally equal simulation results.
+- Allele frequency is measured over ranked allele observations rather than only generated individual count.
+- Passing simulations produce no failure packet.
+- Failed statistical resource-test assertions produce one structured diagnostic and an inspectable reproducibility packet.
+- Reproducibility packet JSON round trips deterministically.
+- Zero, negative, and over-limit sample counts are rejected before simulation.
+
+**Tests**
+
+- Deterministic population-template simulation within tolerance with ranked-observation accounting.
+- Configured maximum-sample rejection.
+- Resource-test statistical failure diagnostic and packet creation.
+- Reproducibility packet JSON round trip and deterministic output.
+
+**Implemented**
+
+- `StatisticalTolerance` with clamped absolute proportion bounds.
+- `SimulationResourceLimits` with a default maximum of 100,000 samples.
+- `PopulationTemplateSimulationService.MeasureAlleleFrequency` and `PopulationTemplateSimulationResult`.
+- `ReproducibilityPacket` and `ReproducibilityPacketJsonCodec`.
+- `AssertPopulationTemplateFrequencyStep`.
+- Reproducibility packet collection on `ResourceTestContext` and `ResourceTestCaseResult`.
+
+**Implementation simplification choices**
+
+- This slice simulates population-template allele frequencies only; it does not add reproduction, mutation, trace, template-group, or multi-generation simulation.
+- Tolerances use an absolute proportion range only; confidence intervals, advisory severity, and maximum-outlier semantics remain deferred.
+- Each ranked allele entry is one observation. Correlated/linkage-aware observations remain deferred with richer template simulation.
+- The simulation runs sequentially and stores aggregate counts only; it does not retain generated genomes unless a future failing-invariant operation requires them.
+- Reproducibility packets embed canonical population-template JSON as the input fixture and expose JSON only.
+- The statistical resource-test step is an in-memory custom step; serialized resource-test specifications do not yet include template fixtures or statistical step kinds.
+
+**Not yet implemented**
+
+- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, mutation/trace simulation, confidence interpretations, maximum outlier policies, advisory statistical failures, parallel execution, elapsed-time/allocation limits, serialized statistical step specifications, or resource-pack failure-packet persistence.
+
+**Requirements advanced:** REQ-RANDOM, REQ-RTEST, REQ-TEMPLATE, REQ-REPRO.
 
 ### Later hardening and release work
 
@@ -1122,6 +1175,12 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
   - import/export bridges for genomes, population templates, and resource tests
   - runtime startup diagnostics for Godot-facing callers
   - basic adapter package metadata
+- Slice 16 statistical simulation and reproducibility hardening:
+  - bounded deterministic population-template allele-frequency simulation
+  - absolute statistical proportion tolerance evaluation
+  - aggregate ranked-allele observation reporting
+  - resource-test statistical assertion diagnostics
+  - deterministic JSON reproducibility packets exposed on failed resource-test cases
 
 ### Not yet implemented
 
@@ -1132,10 +1191,10 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-test result/failure packet codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
+- Resource-test result codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions beyond in-memory population-template allele frequency, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, and Godot engine-version matrices.
-- Statistical simulation/tolerance tests and reproducibility packets.
+- Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and serialized statistical resource-test steps.
 
 ### Recorded simplifications
 
@@ -1146,13 +1205,14 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
 - Slice 7 starts compatibility/development with in-memory rules and opaque gestation context; full authored resources and gestational simulation are deferred.
 - Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
-- Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
+- Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, broader statistical reports beyond Slice 16 allele-frequency simulation, and binary template codecs are deferred.
 - Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
-- Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, statistical tolerances, and reproducibility packets are deferred.
+- Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, and statistical/reproducibility features beyond Slice 16's in-memory template-frequency step are deferred.
 - Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
 - Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
 - Slice 15 uses package-free Godot-facing DTOs and bridges; GodotSharp resource classes, editor plugins, addon layout, binary import/export, and engine-specific packaging are deferred.
-- Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
+- Slice 16 starts statistical coverage with sequential population-template allele-frequency sampling, absolute tolerances, sample-count limits, and JSON failure packets; broader simulation domains, confidence/outlier models, and serialized statistical steps are deferred.
+- Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
 ## Test accounting
@@ -1251,6 +1311,11 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
   - Godot adapter genome/template document round trips
   - Godot adapter kind mismatch and import failure diagnostics
   - Godot adapter resource-test import/export, resource package behavior, and runtime startup diagnostics
+- Slice 16 package-free implementation tests in `tests/Genomancy.Tests`:
+  - deterministic population-template allele-frequency simulation and ranked-observation accounting
+  - configured simulation maximum-sample rejection
+  - resource-test statistical failure diagnostic and reproducibility packet creation
+  - deterministic reproducibility packet JSON round trip
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1271,6 +1336,7 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
 - Slice 13 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 14 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 15 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 16 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
@@ -1295,8 +1361,8 @@ Refine before implementation. Add statistical simulation/tolerance assertions, r
 | OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
-| OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; statistical tolerance and reproducibility packet design remains under REQ-RANDOM later work. |
-| OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
+| OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; Slice 16 adds first template-frequency tolerances and JSON reproducibility packets, while broader statistical/reproduction packet design remains under REQ-RANDOM later work. |
+| OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Slice 16 adds a configurable sample-count limit for population-template simulations; graph depth, elapsed-time, allocation, and other simulation-domain limits remain open. |
 | OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Later storage hardening / Slice 15 packaging review | Keep provider outside core; Slice 14 added only package-free JSON-file storage, so provider selection remains open. |
 
 ## Ledger update checklist

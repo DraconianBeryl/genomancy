@@ -1,10 +1,12 @@
 using Genomancy.Core.Definitions;
+using Genomancy.Core.Simulation;
 
 namespace Genomancy.Core.ResourceTesting;
 
 public sealed class ResourceTestContext
 {
     private readonly List<ResourceTestDiagnostic> _diagnostics = [];
+    private readonly List<ReproducibilityPacket> _reproducibilityPackets = [];
 
     public ResourceTestContext(ResourceTestDefinition definition, SystemDefinitionBuilder systemDefinition)
     {
@@ -25,6 +27,8 @@ public sealed class ResourceTestContext
 
     public IReadOnlyList<ResourceTestDiagnostic> Diagnostics => _diagnostics;
 
+    public IReadOnlyList<ReproducibilityPacket> ReproducibilityPackets => _reproducibilityPackets;
+
     public void SetValidationResult(ValidationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -42,5 +46,11 @@ public sealed class ResourceTestContext
     public void AddDiagnostic(ResourceTestSeverity severity, string code, string path, string message)
     {
         _diagnostics.Add(new ResourceTestDiagnostic(severity, code, path, message));
+    }
+
+    public void AddReproducibilityPacket(ReproducibilityPacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+        _reproducibilityPackets.Add(packet);
     }
 }
