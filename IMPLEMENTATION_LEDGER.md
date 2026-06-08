@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-07 |
-| Current implementation slice | Slice 12 - Resource testing framework (next; refine before implementation) |
+| Current implementation slice | Slice 13 - Resource testing framework expansion (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -73,6 +73,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 9 to regional genome assignments, region-scoped expression, inheritance-site source resolution, and distinct chimeric material state. | Slice 9 implementation | Advances mosaic/chimera modeling while deferring region geometry, chimeric serialization, and full inheritance workflows. | Accepted |
 | 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
 | 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
+| 2026-06-07 | Refine Slice 12 to an in-memory resource-test runner with fixture factories, validation/freeze operations, validation assertions, custom step extensibility, deterministic result ordering, and structured diagnostics. | Slice 12 implementation | Establishes the first resource-testing framework surface while deferring serialized test resources, resource loading, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -121,7 +122,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | In progress | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | In progress | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
-| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
+| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | In progress | 12-13 | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | In progress | 4, 12 | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 14 | Round-trip + compatibility |
@@ -779,9 +780,62 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-RANDOM.
 
-### Slices 12-13 - Resource testing framework
+### Slice 12 - Resource testing framework foundation
 
-Refine and likely subdivide before implementation. Build designer-authored test resources, fixtures, operations, assertions, custom extension points, validation/reachability/policy coverage, deterministic simulation and statistical tests, diagnostics/reproducibility packets, tags, severity, snapshots, fuzz/matrix execution, isolation, and runtime-safe subsets.
+**Status:** Verified on 2026-06-07 for the refined Slice 12 acceptance criteria. Broader requirement families remain **In progress** where later slices add serialized resources, broader operations/assertions, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions.
+
+**Objective:** Establish a first-class, engine-neutral resource-test runner that can exercise authored definition fixtures without depending on the implementation test harness.
+
+**Deliverables**
+
+- Define stable resource-test IDs.
+- Represent in-memory resource-test definitions with fixture factories, ordered steps, display names, and sorted tags.
+- Provide a resource-test runner that executes cases in deterministic ID order.
+- Provide resource-test context state for a fresh system-definition fixture, latest validation result, optional frozen definition, and structured diagnostics.
+- Provide validation and freeze steps for system definitions.
+- Provide validation-result and validation-diagnostic assertion steps.
+- Support custom test steps through a public step interface.
+- Return deterministic case/run results with pass/fail status and ordered diagnostics.
+
+**Acceptance criteria**
+
+- Valid definition fixtures can validate, assert success, assert absent diagnostics, and freeze.
+- Invalid fixtures can assert expected validation failure and expected diagnostics.
+- Unexpected validation results and missing diagnostics produce structured resource-test errors.
+- Cases run in deterministic resource-test ID order.
+- Each resource-test run receives a fresh fixture instance.
+- Custom steps can inspect and mutate the fixture through the same context used by built-in steps.
+
+**Tests**
+
+- Valid baseline resource-test fixture with validation assertions and freeze.
+- Invalid/expected-failure fixture plus unexpected-valid failure diagnostics and deterministic case/diagnostic ordering.
+- Custom step fixture-isolation test across repeated runner invocations.
+
+**Implemented**
+
+- `ResourceTestId`, `ResourceTestDefinition`, `IResourceTestStep`, `ResourceTestContext`, `ResourceTestDiagnostic`, `ResourceTestCaseResult`, `ResourceTestRunResult`, and status/severity enums.
+- `ResourceTestRunner.Run` for deterministic in-memory case execution.
+- `ValidateSystemDefinitionStep`, `FreezeSystemDefinitionStep`, `ExpectValidationResultStep`, and `ExpectValidationDiagnosticStep`.
+- Structured resource-test diagnostics for fixture exceptions, step exceptions, failed freeze, missing validation results, validation-result mismatches, and validation-diagnostic mismatches.
+
+**Implementation simplification choices**
+
+- Resource-test fixtures are in-memory factories returning `SystemDefinitionBuilder`; serialized designer-authored test resources are deferred.
+- Runner execution is sequential and deterministic; no parallel, matrix, fuzz, or long-running simulation execution is implemented.
+- Built-in operations cover only system-definition validation and freeze.
+- Built-in assertions cover only validation success/failure and validation diagnostic presence/absence.
+- Reproducibility packets are represented only by deterministic test IDs, paths, and diagnostics, not by a serialized failure packet format.
+
+**Not yet implemented**
+
+- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions/tolerances, simulation reproducibility packets, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
+
+### Slice 13 - Resource testing framework expansion
+
+Refine before implementation. Expand resource testing with serialized test definitions or a typed resource-test DTO layer, resource loading boundaries, broader operations/assertions, validation reachability and policy coverage checks, deterministic simulation/statistical assertions, reproducibility packets, tags/severity filtering, snapshots, fuzz/matrix execution, isolation controls, and runtime-safe subsets.
 
 **Requirements targeted:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
@@ -896,6 +950,12 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - deterministic nested group sampling and stable generated population outputs
   - optional deterministic cross-template blending among direct templates
   - generated genome metadata preserving selected group path and source template IDs
+- Slice 12 resource testing framework foundation:
+  - stable resource-test IDs and in-memory resource-test definitions
+  - deterministic resource-test runner with case/run results
+  - validation/freeze steps and validation assertion steps
+  - structured resource-test diagnostics
+  - custom step extension point and fresh fixture isolation per run
 
 ### Not yet implemented
 
@@ -906,9 +966,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
+- Resource-test JSON/binary codecs, resource-pack loading, serialized operation/assertion registries, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, and runtime-safe subset handling.
 - Final serialization/storage modules beyond Slice 2 preliminary core codecs.
 - All Godot integration.
-- All resource tests.
 - Statistical simulation/tolerance tests and reproducibility packets.
 
 ### Recorded simplifications
@@ -922,6 +982,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
 - Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
 - Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
+- Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, statistical tolerances, and reproducibility packets are deferred.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
@@ -1006,6 +1067,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - nested weighted template-group generation and group-path preservation
   - deterministic forced cross-template blending with structural output equality
   - template-group version compatibility rejection, zero-positive-weight generation rejection, and source-alias isolation
+- Slice 12 package-free implementation tests in `tests/Genomancy.Tests`:
+  - valid resource-test fixture with validation assertions and freeze
+  - expected invalid fixture and unexpected-valid failure diagnostics with deterministic ordering
+  - custom resource-test step extension and fresh fixture isolation across repeated runs
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1022,13 +1087,14 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 9 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 10 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 11 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 12 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
-- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
+- REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Designer-authored resource tests do not exist yet for any requirement family.
+- Serialized designer-authored resource-test files do not exist yet; Slice 12 covers only the in-memory framework foundation.
 
 ### Test layers required by the project
 

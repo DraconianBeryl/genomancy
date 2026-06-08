@@ -8,6 +8,7 @@ using Genomancy.Core.Genome;
 using Genomancy.Core.Inheritance;
 using Genomancy.Core.Mosaicism;
 using Genomancy.Core.Mutation;
+using Genomancy.Core.ResourceTesting;
 using Genomancy.Core.Reproduction;
 using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
@@ -83,6 +84,9 @@ var tests = new (string Name, Action Test)[]
     ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
     ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
     ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
+    ("Resource tests run validation fixtures and assertions", ResourceTestsRunValidationFixturesAndAssertions),
+    ("Resource tests report deterministic failures", ResourceTestsReportDeterministicFailures),
+    ("Resource tests support custom isolated steps", ResourceTestsSupportCustomIsolatedSteps),
 };
 
 var failures = new List<string>();
@@ -1711,6 +1715,80 @@ static void TemplateGroupVersionsValidateCompatibilityAndIsolateAliases()
         ExternalIndividualId.Parse("external:template-group.zero.sample")));
 }
 
+static void ResourceTestsRunValidationFixturesAndAssertions()
+{
+    var test = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.valid-human"),
+        CreateMinimalHumanBuilder,
+        [
+            new ValidateSystemDefinitionStep(),
+            new ExpectValidationResultStep(ExpectedValid: true),
+            new ExpectValidationDiagnosticStep("GENE_UNKNOWN_ALLELE", MustBePresent: false),
+            new FreezeSystemDefinitionStep(),
+        ],
+        displayName: "Valid human baseline",
+        tags: ["baseline", "validation"]);
+    var result = ResourceTestRunner.Run([test]);
+
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertEqual(ResourceTestStatus.Passed, result.Cases.Single().Status);
+    AssertEqual(ResourceTestId.Parse("resource-test.valid-human"), result.Cases.Single().TestId);
+    AssertEqual("baseline", result.Cases.Single().Tags[0]);
+    AssertEqual("validation", result.Cases.Single().Tags[1]);
+}
+
+static void ResourceTestsReportDeterministicFailures()
+{
+    var expectedInvalid = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.invalid-expected"),
+        () =>
+        {
+            var builder = new SystemDefinitionBuilder(TestVersion());
+            builder.AddGene(new GeneDefinition(Id("gene.invalid"), [Id("allele.missing")]));
+            return builder;
+        },
+        [
+            new ValidateSystemDefinitionStep(),
+            new ExpectValidationResultStep(ExpectedValid: false),
+            new ExpectValidationDiagnosticStep("GENE_UNKNOWN_ALLELE"),
+        ]);
+    var unexpectedValid = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.valid-expected-invalid"),
+        CreateMinimalHumanBuilder,
+        [
+            new ValidateSystemDefinitionStep(),
+            new ExpectValidationResultStep(ExpectedValid: false),
+            new ExpectValidationDiagnosticStep("GENE_UNKNOWN_ALLELE"),
+        ]);
+    var result = ResourceTestRunner.Run([unexpectedValid, expectedInvalid]);
+    var failing = result.Cases.Single(test => test.TestId == ResourceTestId.Parse("resource-test.valid-expected-invalid"));
+
+    AssertEqual(ResourceTestStatus.Failed, result.Status);
+    AssertEqual(ResourceTestId.Parse("resource-test.invalid-expected"), result.Cases[0].TestId);
+    AssertEqual(ResourceTestId.Parse("resource-test.valid-expected-invalid"), result.Cases[1].TestId);
+    AssertEqual(2, failing.Diagnostics.Count);
+    AssertEqual("RESOURCE_TEST_VALIDATION_DIAGNOSTIC_MISMATCH", failing.Diagnostics[0].Code);
+    AssertEqual("RESOURCE_TEST_VALIDATION_RESULT_MISMATCH", failing.Diagnostics[1].Code);
+}
+
+static void ResourceTestsSupportCustomIsolatedSteps()
+{
+    var observedAlleleCounts = new List<int>();
+    var test = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.custom-step"),
+        CreateMinimalHumanBuilder,
+        [
+            new CountAllelesAndMutateStep(observedAlleleCounts),
+        ]);
+    var first = ResourceTestRunner.Run([test]);
+    var second = ResourceTestRunner.Run([test]);
+
+    AssertEqual(ResourceTestStatus.Passed, first.Status);
+    AssertEqual(ResourceTestStatus.Passed, second.Status);
+    AssertEqual(2, observedAlleleCounts.Count);
+    AssertTrue(observedAlleleCounts.All(count => count == 1), "Each resource-test run must receive an isolated fresh fixture.");
+}
+
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
 {
     var builder = new SystemDefinitionBuilder(TestVersion());
@@ -2193,5 +2271,16 @@ static void AssertEqual<T>(T expected, T actual)
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
     {
         throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
+    }
+}
+
+sealed class CountAllelesAndMutateStep(List<int> observedAlleleCounts) : IResourceTestStep
+{
+    public string Name => "count-alleles-and-mutate";
+
+    public void Execute(ResourceTestContext context)
+    {
+        observedAlleleCounts.Add(context.SystemDefinition.Alleles.Count);
+        context.SystemDefinition.AddAllele(new AlleleDefinition(ResourceId.Parse($"allele.custom.{observedAlleleCounts.Count}")));
     }
 }
