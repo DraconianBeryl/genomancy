@@ -6,11 +6,14 @@
 model, invariants, deterministic mechanics, serialization contracts, and policy
 interfaces as they are implemented.
 
+Implemented optional boundaries:
+
+- `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
+  atomic JSON-file persistence using caller-supplied core stream codecs.
+
 The following boundaries are reserved for later slices:
 
-- Serialization implementation that depends only on core abstractions.
-- Optional storage modules for JSON files, custom binary files, and SQLite.
-- Designer-authored resource testing infrastructure.
+- Optional custom binary-file and SQLite storage modules.
 - A Godot adapter that converts between Godot-facing resources/nodes and core
   types without moving genetics behavior into Godot-specific classes.
 
@@ -21,7 +24,8 @@ Allowed dependencies:
 - Optional adapters depend on `Genomancy.Core`.
 - Optional storage modules depend on `Genomancy.Core`.
 - Resource testing tools depend on `Genomancy.Core`.
-- Implementation tests depend on `Genomancy.Core`.
+- Implementation tests depend on `Genomancy.Core` and optional modules under
+  test.
 
 Disallowed dependencies:
 

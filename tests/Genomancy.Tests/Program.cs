@@ -14,6 +14,7 @@ using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
+using Genomancy.Storage.JsonFile;
 
 var tests = new (string Name, Action Test)[]
 {
@@ -90,6 +91,9 @@ var tests = new (string Name, Action Test)[]
     ("Resource test JSON round trip materializes executable definitions", ResourceTestJsonRoundTripMaterializesExecutableDefinitions),
     ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
+    ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
+    ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
+    ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
 };
 
 var failures = new List<string>();
@@ -1837,6 +1841,68 @@ static void ResourceTestRunnerFiltersByTagsDeterministically()
     AssertEqual(ResourceTestStatus.Passed, result.Status);
     AssertEqual(1, result.Cases.Count);
     AssertEqual(ResourceTestId.Parse("resource-test.tags.fast"), result.Cases[0].TestId);
+}
+
+static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
+{
+    var template = CreatePopulationTemplate("template.binary", "template.binary.v1", lightWeight: 2, darkWeight: 3);
+    var buffer = PopulationTemplateBinaryCodec.WriteToBuffer(template);
+    var roundTrip = PopulationTemplateBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(template, roundTrip);
+    AssertThrows<GenomeSerializationException>(() => PopulationTemplateBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(() => PopulationTemplateBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void ResourceTestBinaryCodecRoundTripsExecutableSpecs()
+{
+    var specs = new[]
+    {
+        CreateResourceTestSpecification("resource-test.binary.valid", invalidGene: false, tags: ["binary"]),
+        CreateResourceTestSpecification("resource-test.binary.invalid", invalidGene: true, tags: ["binary", "negative"]),
+    };
+    var buffer = ResourceTestBinaryCodec.WriteToBuffer(specs);
+    var roundTrip = ResourceTestBinaryCodec.ReadFromBuffer(buffer);
+    var result = ResourceTestRunner.Run(roundTrip.Select(specification => specification.ToDefinition()));
+
+    AssertEqual(ResourceTestJsonCodec.WriteToText(specs), ResourceTestJsonCodec.WriteToText(roundTrip));
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertThrows<GenomeSerializationException>(() => ResourceTestBinaryCodec.ReadFromBuffer(buffer[..4]));
+}
+
+static void JsonFileStoragePersistsResourceTestSpecsOutsideCore()
+{
+    var path = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}",
+        "resource-tests.json");
+    var store = new JsonFileStore<IReadOnlyList<ResourceTestSpecification>>(
+        ResourceTestJsonCodec.Write,
+        ResourceTestJsonCodec.Read);
+    var specs = new[]
+    {
+        CreateResourceTestSpecification("resource-test.storage.valid", invalidGene: false, tags: ["storage"]),
+    };
+
+    try
+    {
+        store.Save(path, specs);
+        var loaded = store.Load(path);
+        var result = ResourceTestRunner.Run(loaded.Select(specification => specification.ToDefinition()));
+
+        AssertEqual(ResourceTestJsonCodec.WriteToText(specs), ResourceTestJsonCodec.WriteToText(loaded));
+        AssertEqual(ResourceTestStatus.Passed, result.Status);
+    }
+    finally
+    {
+        var root = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
 
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()

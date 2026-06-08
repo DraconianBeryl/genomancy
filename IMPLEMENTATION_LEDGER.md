@@ -10,8 +10,8 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-07 |
-| Current implementation slice | Slice 14 - Serialization hardening and optional storage modules (next; refine before implementation) |
+| Last ledger update | 2026-06-08 |
+| Current implementation slice | Slice 15 - Godot adapter and packaging (next; refine before implementation) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -75,6 +75,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
 | 2026-06-07 | Refine Slice 12 to an in-memory resource-test runner with fixture factories, validation/freeze operations, validation assertions, custom step extensibility, deterministic result ordering, and structured diagnostics. | Slice 12 implementation | Establishes the first resource-testing framework surface while deferring serialized test resources, resource loading, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions. | Accepted |
 | 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
+| 2026-06-08 | Refine Slice 14 to shared preliminary binary envelopes for genomes/templates/resource tests and an optional atomic JSON-file storage adapter in a separate assembly. | Slice 14 implementation | Advances serialization and storage boundaries without adding provider dependencies to core; SQLite, migrations, custom compact binary storage, and remaining model codecs are deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -887,9 +888,58 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 14 - Serialization hardening and optional storage modules
 
-Refine before implementation. Finalize compatibility contracts and granular JSON/binary formats, then add non-core JSON-file, custom-binary-file, and SQLite storage modules with migrations and test-fixture support.
+**Status:** Verified on 2026-06-08 for the refined Slice 14 acceptance criteria. Broader requirement families remain **In progress** where later work adds compact binary formats, remaining model codecs, SQLite/custom-binary storage, and migrations.
 
-**Requirements targeted:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
+**Objective:** Harden the existing preliminary binary-envelope pattern and establish the first optional filesystem storage module without introducing storage dependencies into core.
+
+**Deliverables**
+
+- Extract shared binary-envelope framing for core codecs with magic headers, payload lengths, and truncated-payload errors.
+- Preserve existing genome binary behavior through the shared envelope implementation.
+- Add preliminary binary stream/buffer codecs for population templates and resource-test specifications.
+- Add a separate `Genomancy.Storage.JsonFile` assembly that depends on core.
+- Provide generic JSON-file save/load using caller-supplied stream codecs.
+- Write files through a same-directory temporary file followed by atomic replacement where supported by the host filesystem.
+- Add the storage assembly to the solution and verification build.
+
+**Acceptance criteria**
+
+- Genome binary round trips and error handling continue to pass after shared framing extraction.
+- Population-template binary round trips preserve immutable template state and reject invalid/truncated headers and incompatible system versions.
+- Resource-test binary round trips preserve deterministic JSON-equivalent specifications and remain executable.
+- JSON-file storage persists and loads resource-test specifications that execute successfully.
+- `Genomancy.Core` retains no filesystem-storage or SQLite provider dependency.
+- The complete solution builds with the optional storage assembly.
+
+**Tests**
+
+- Existing genome binary regression coverage.
+- Population-template binary round-trip, truncated-header, and system-version rejection test.
+- Resource-test binary round-trip, executable materialization, and truncated-header test.
+- JSON-file storage save/load and loaded-resource execution test using an isolated temporary directory.
+
+**Implemented**
+
+- Internal `BinaryEnvelopeCodec` shared by preliminary binary codecs.
+- `PopulationTemplateBinaryCodec` and `ResourceTestBinaryCodec`.
+- Refactored `GenomeBinaryCodec` to use shared binary framing without changing its public API.
+- `Genomancy.Storage.JsonFile` optional project and generic `JsonFileStore<T>`.
+- Same-directory temporary writes with overwrite move and cleanup.
+- Solution/test project references covering the new storage assembly.
+
+**Implementation simplification choices**
+
+- Binary codecs still wrap deterministic JSON payloads; no compact field-level binary schema is finalized.
+- JSON-file storage is generic and caller-configured with stream codecs rather than exposing resource-specific repositories.
+- Atomic replacement semantics depend on the host filesystem behavior of `File.Move(..., overwrite: true)`.
+- No file locking, concurrent-writer coordination, directory manifest, resource-pack layout, or migration framework is implemented.
+- SQLite and custom binary-file storage modules are deferred rather than adding package/native-provider dependencies in this slice.
+
+**Not yet implemented**
+
+- Compact stable binary schemas, binary codecs for body-plan variants/template groups/mosaic state, serialized result/failure packets, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, concurrency controls, untrusted-input size limits, and storage integration fixtures beyond JSON resource tests.
+
+**Requirements advanced:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
 
 ### Slice 15 - Godot adapter and packaging
 
@@ -1007,6 +1057,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - deterministic resource-test JSON codec over streams, buffers, and text
   - materialization from serialized specifications into executable resource-test definitions
   - tag include/exclude filtering for resource-test runs
+- Slice 14 serialization hardening and optional JSON-file storage:
+  - shared preliminary binary envelope framing
+  - population-template and resource-test binary codecs
+  - optional `Genomancy.Storage.JsonFile` assembly
+  - generic atomic JSON-file save/load adapter
 
 ### Not yet implemented
 
@@ -1017,8 +1072,8 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-test binary codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
-- Final serialization/storage modules beyond Slice 2 preliminary core codecs.
+- Resource-test result/failure packet codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions, snapshots, fuzz/matrix execution, statistical assertions/tolerances, reproducibility packets, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
+- Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - All Godot integration.
 - Statistical simulation/tolerance tests and reproducibility packets.
 
@@ -1035,7 +1090,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
 - Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, statistical tolerances, and reproducibility packets are deferred.
 - Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
-- Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
+- Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1127,6 +1182,10 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - resource-test JSON round trip and materialized execution
   - unsupported serialized step and malformed JSON rejection
   - deterministic include/exclude tag filtering
+- Slice 14 package-free implementation tests in `tests/Genomancy.Tests`:
+  - population-template binary round trip, invalid/truncated header, and system-version rejection
+  - resource-test binary round trip, executable materialization, and truncated header
+  - optional JSON-file storage persistence and loaded-resource execution
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1145,6 +1204,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 11 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 12 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 13 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 14 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
@@ -1171,7 +1231,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; statistical tolerance and reproducibility packet design remains under REQ-RANDOM later work. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
-| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 14 | Keep provider outside core and evaluate platform support before selection. |
+| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Later storage hardening / Slice 15 packaging review | Keep provider outside core; Slice 14 added only package-free JSON-file storage, so provider selection remains open. |
 
 ## Ledger update checklist
 
