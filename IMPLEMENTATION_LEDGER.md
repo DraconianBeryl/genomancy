@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 18 - Resource-test result and failure-packet codecs (verified); later hardening/release work is next |
+| Current implementation slice | Slice 19 - Population template-group codecs (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -80,6 +80,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-08 | Refine Slice 16 to bounded population-template allele-frequency simulation, absolute statistical tolerances, resource-test statistical assertions, and deterministic JSON reproducibility packets. | Slice 16 implementation | Establishes reusable statistical/reproducibility primitives while deferring reproduction distributions, template-group simulation reports, confidence models, outlier policies, and, until Slice 17, serialized statistical step specifications. | Accepted |
 | 2026-06-08 | Refine Slice 17 to serialized resource-test specifications for the Slice 16 population-template frequency assertion. | Slice 17 implementation | Makes designer-authored JSON/binary resource-test specs able to carry embedded population-template statistical assertions while deferring broader statistical registries, external template references, and, until Slice 18, result codecs. | Accepted |
 | 2026-06-08 | Refine Slice 18 to deterministic JSON and preliminary binary codecs for resource-test run results, diagnostics, and reproducibility packets. | Slice 18 implementation | Makes resource-test outcomes portable without defining resource-pack layout or persistence policy; storage integration, manifests, retention, and compact binary schemas remain deferred. | Accepted |
+| 2026-06-09 | Refine Slice 19 to deterministic JSON and preliminary binary codecs for embedded population template-group versions. | Slice 19 implementation | Makes nested template groups portable while preserving Slice 11's embedded-version model; external template/group registries, resource-pack references, compact binary schemas, and structure-level statistical reports remain deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -782,7 +783,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- JSON/binary template-group codecs, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, biased inheritance/mutation hooks, and resource-test coverage.
+- JSON/binary template-group codecs remain deferred until Slice 19; external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, biased inheritance/mutation hooks, and resource-test coverage remain deferred.
 
 **Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-RANDOM.
 
@@ -1154,6 +1155,56 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-SERIAL, REQ-STORAGE.
 
+### Slice 19 - Population template-group codecs
+
+**Status:** Verified on 2026-06-09 for the refined Slice 19 acceptance criteria. Broader template-group authoring, reference registries, and statistical reports remain **In progress**.
+
+**Objective:** Serialize immutable population template-group versions, including direct templates, nested child groups, weights, and cross-template blend policy, through deterministic core stream/buffer APIs.
+
+**Deliverables**
+
+- Define a versioned deterministic JSON envelope for `PopulationTemplateGroupVersion`.
+- Preserve group ID, group-version ID, system-definition version, change summary, direct weighted templates, weighted child groups, and cross-template blend policy.
+- Embed current `PopulationTemplateVersion` and child `PopulationTemplateGroupVersion` content directly, matching the Slice 11 embedded-version model.
+- Reject incompatible system-definition versions during deserialization.
+- Add a preliminary binary template-group codec using the shared binary envelope and canonical JSON payload.
+
+**Acceptance criteria**
+
+- JSON round trips nested template groups deterministically.
+- Binary round trips produce the same canonical JSON group representation.
+- Round-tripped template groups produce deterministic generated samples equivalent to the source group for identical inputs.
+- Cross-template blend policy and child-group weights survive round trip.
+- Unknown JSON envelope versions, incompatible system-definition versions, and truncated binary payloads are rejected.
+
+**Tests**
+
+- Nested template-group JSON round trip with embedded direct templates and child groups.
+- Preliminary binary template-group round trip.
+- Deterministic sample equality after JSON round trip.
+- Cross-template blend policy preservation.
+- Unknown envelope, incompatible system version, and truncated binary rejection.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `PopulationTemplateGroupJsonCodec`.
+- `PopulationTemplateGroupBinaryCodec`.
+- Deterministic ordering for embedded direct templates, child groups, template groups, genes, and allele frequencies.
+- System-definition version compatibility validation for the root group and embedded templates/groups.
+
+**Implementation simplification choices**
+
+- Direct templates and child groups are embedded in the serialized payload instead of referenced from a resource registry.
+- Binary serialization wraps canonical JSON in the existing preliminary binary envelope.
+- The codec preserves current template-group model fields only; no external fixture references, manifests, or statistical reports are introduced.
+
+**Not yet implemented**
+
+- External template/template-group reference registries, resource-pack manifests, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, compact binary template-group schemas, or storage/Godot template-group adapters.
+
+**Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-SERIAL, REQ-RANDOM.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1291,13 +1342,18 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - preliminary binary codec for resource-test run results
   - serialized diagnostics, tags, case statuses, and embedded reproducibility packets
   - aggregate result status consistency validation
+- Slice 19 population template-group codecs:
+  - deterministic JSON codec for nested population template-group versions
+  - preliminary binary codec for population template-group versions
+  - embedded direct template and child template-group serialization
+  - cross-template blend policy and selection-weight preservation
 
 ### Not yet implemented
 
 - Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, and advanced mosaic/chimera behavior.
 - Regional geometry, mosaic/chimera serialization, overlapping mosaic expression, chimeric expression integration, and reproduction workflows from inheritance sites.
 - Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
-- Template-group JSON/binary codecs, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, and structure-level statistical simulation reports.
+- External template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, and structure-level statistical simulation reports.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
@@ -1316,7 +1372,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 8 starts generated complements and variants as request-time/runtime state; resource-authored policies, variant persistence, and binary variant codecs are deferred.
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
 - Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, broader statistical reports beyond Slice 16 allele-frequency simulation, and binary template codecs are deferred.
-- Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
+- Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; Slice 19 adds codecs for the embedded model while reference registries, pair-specific blend matrices, and statistical reports remain deferred.
 - Slice 12 starts resource testing with in-memory fixture factories and a small built-in operation/assertion set; serialized designer-authored resources, snapshots, fuzz/matrix execution, and statistical/reproducibility features beyond Slice 16's in-memory template-frequency step are deferred.
 - Slice 13 serializes typed resource-test specifications for the current authored definition kernel only; binary codecs, result/failure packet serialization, broad operation registries, and resource-pack loading are deferred.
 - Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
@@ -1324,6 +1380,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 16 starts statistical coverage with sequential population-template allele-frequency sampling, absolute tolerances, sample-count limits, and JSON failure packets; broader simulation domains and confidence/outlier models are deferred.
 - Slice 17 embeds population-template statistical assertion data directly in serialized resource-test steps; external template references and broader statistical registries are deferred.
 - Slice 18 serializes resource-test result fields and embedded reproducibility packets only; result persistence, manifests, reporting metadata, and compact binary schemas are deferred.
+- Slice 19 serializes template groups with embedded templates and child groups only; external references, manifests, and compact binary schemas remain deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1436,6 +1493,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - statistical failure diagnostic and reproducibility packet preservation
   - resource-test result binary round trip
   - unknown JSON envelope version, inconsistent aggregate status, and truncated binary rejection
+- Slice 19 package-free implementation tests in `tests/Genomancy.Tests`:
+  - nested population template-group JSON and binary round trips
+  - deterministic generated sample equality after JSON round trip
+  - cross-template blend policy preservation
+  - unknown envelope, incompatible system-version, and truncated binary rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1459,13 +1521,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 16 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 17 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 18 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 19 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers; repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
 
 ### Test layers required by the project
 

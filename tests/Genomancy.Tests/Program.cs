@@ -88,6 +88,7 @@ var tests = new (string Name, Action Test)[]
     ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
     ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
     ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
+    ("Population template group codecs round trip nested groups", PopulationTemplateGroupCodecsRoundTripNestedGroups),
     ("Resource tests run validation fixtures and assertions", ResourceTestsRunValidationFixturesAndAssertions),
     ("Resource tests report deterministic failures", ResourceTestsReportDeterministicFailures),
     ("Resource tests support custom isolated steps", ResourceTestsSupportCustomIsolatedSteps),
@@ -1765,6 +1766,59 @@ static void TemplateGroupVersionsValidateCompatibilityAndIsolateAliases()
         1,
         GenomeVersionId.Parse("template-group.zero.sample"),
         ExternalIndividualId.Parse("external:template-group.zero.sample")));
+}
+
+static void PopulationTemplateGroupCodecsRoundTripNestedGroups()
+{
+    var light = CreatePopulationTemplate("template.group-codec.light", "template.group-codec.light.v1", lightWeight: 10, darkWeight: 0);
+    var dark = CreatePopulationTemplate("template.group-codec.dark", "template.group-codec.dark.v1", lightWeight: 0, darkWeight: 10);
+    var child = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.codec.child"),
+        PopulationTemplateGroupVersionId.Parse("template-group.codec.child.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(dark, 1)],
+        changeSummary: "child codec fixture");
+    var root = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.codec.root"),
+        PopulationTemplateGroupVersionId.Parse("template-group.codec.root.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(light, 2)],
+        [new WeightedPopulationTemplateGroup(child, 1)],
+        new CrossTemplateBlendPolicy(rate: 0.25, secondTemplateWeight: 0.4),
+        "root codec fixture");
+    var text = PopulationTemplateGroupJsonCodec.WriteToText(root);
+    var jsonRoundTrip = PopulationTemplateGroupJsonCodec.ReadFromBuffer(
+        PopulationTemplateGroupJsonCodec.WriteToBuffer(root),
+        TestVersion());
+    var binary = PopulationTemplateGroupBinaryCodec.WriteToBuffer(root);
+    var binaryRoundTrip = PopulationTemplateGroupBinaryCodec.ReadFromBuffer(binary, TestVersion());
+    var originalSample = PopulationTemplateGroupService.SampleGenome(
+        root,
+        12345,
+        GenomeVersionId.Parse("template-group.codec.sample"),
+        ExternalIndividualId.Parse("external:template-group.codec.sample"));
+    var roundTripSample = PopulationTemplateGroupService.SampleGenome(
+        jsonRoundTrip,
+        12345,
+        GenomeVersionId.Parse("template-group.codec.sample"),
+        ExternalIndividualId.Parse("external:template-group.codec.sample"));
+
+    AssertEqual(root, jsonRoundTrip);
+    AssertEqual(root, binaryRoundTrip);
+    AssertEqual(text, PopulationTemplateGroupJsonCodec.WriteToText(jsonRoundTrip));
+    AssertEqual(text, PopulationTemplateGroupJsonCodec.WriteToText(binaryRoundTrip));
+    AssertEqual(originalSample, roundTripSample);
+    AssertEqual(0.25, jsonRoundTrip.CrossTemplateBlendPolicy.Rate);
+    AssertEqual(0.4, jsonRoundTrip.CrossTemplateBlendPolicy.SecondTemplateWeight);
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateGroupJsonCodec.ReadFromBuffer(
+            PopulationTemplateGroupJsonCodec.WriteToBuffer(root),
+            SystemDefinitionVersion.Parse("other.1")));
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateGroupJsonCodec.ReadFromBuffer(
+            """{"envelopeVersion":99,"id":"template-group.bad","versionId":"template-group.bad.v1","systemDefinitionVersion":"genomancy.test.1","templates":[]}"""u8,
+            TestVersion()));
+    AssertThrows<GenomeSerializationException>(() => PopulationTemplateGroupBinaryCodec.ReadFromBuffer(binary[..4], TestVersion()));
 }
 
 static void ResourceTestsRunValidationFixturesAndAssertions()
