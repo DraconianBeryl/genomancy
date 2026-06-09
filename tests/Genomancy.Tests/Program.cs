@@ -76,6 +76,7 @@ var tests = new (string Name, Action Test)[]
     ("Generated complements add missing groups and validate definitions", GeneratedComplementsAddMissingGroupsAndValidateDefinitions),
     ("Runtime body plan variants evaluate required generated groups", RuntimeBodyPlanVariantsEvaluateRequiredGeneratedGroups),
     ("Runtime body plan variant serialization preserves versioned state", RuntimeBodyPlanVariantSerializationPreservesVersionedState),
+    ("Runtime body plan variant binary codec validates envelope", RuntimeBodyPlanVariantBinaryCodecValidatesEnvelope),
     ("Mosaic regional expression uses assigned genome version", MosaicRegionalExpressionUsesAssignedGenomeVersion),
     ("Mosaic inheritance sites resolve regional genome sources", MosaicInheritanceSitesResolveRegionalGenomeSources),
     ("Chimeric material remains distinct from integrated variants", ChimericMaterialRemainsDistinctFromIntegratedVariants),
@@ -1464,6 +1465,26 @@ static void RuntimeBodyPlanVariantSerializationPreservesVersionedState()
         () => RuntimeBodyPlanVariantJsonCodec.ReadFromBuffer(
             RuntimeBodyPlanVariantJsonCodec.WriteToBuffer(variant),
             SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void RuntimeBodyPlanVariantBinaryCodecValidatesEnvelope()
+{
+    var variant = new RuntimeBodyPlanVariant(
+        BodyPlanVariantId.Parse("variant.binary"),
+        TestVersion(),
+        Id("body.human"),
+        requiredGroupIds: [Id("group.common"), Id("group.wings")],
+        optionalGroupIds: [Id("group.tail")],
+        sharedGroupIds: [Id("group.shared")],
+        changeSummary: "binary variant");
+    var buffer = RuntimeBodyPlanVariantBinaryCodec.WriteToBuffer(variant);
+    var roundTrip = RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(variant, roundTrip);
+    AssertEqual(RuntimeBodyPlanVariantJsonCodec.WriteToText(variant), RuntimeBodyPlanVariantJsonCodec.WriteToText(roundTrip));
+    AssertThrows<GenomeSerializationException>(() => RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(
+        () => RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
 }
 
 static void MosaicRegionalExpressionUsesAssignedGenomeVersion()
