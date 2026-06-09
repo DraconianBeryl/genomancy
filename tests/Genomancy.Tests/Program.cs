@@ -103,6 +103,7 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
+    ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
     ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
 
@@ -2160,6 +2161,61 @@ static void GodotAdapterReportsImportDiagnostics()
     AssertEqual("GODOT_RESOURCE_KIND_MISMATCH", mismatchedKind.Diagnostics.Single().Code);
     AssertTrue(!failedImport.IsSuccess, "Version mismatch must return diagnostics.");
     AssertEqual("GODOT_RESOURCE_IMPORT_FAILED", failedImport.Diagnostics.Single().Code);
+}
+
+static void GodotAdapterRoundTripsTemplateGroupAndResultDocuments()
+{
+    var light = CreatePopulationTemplate("template.godot-group.light", "template.godot-group.light.v1", lightWeight: 10, darkWeight: 0);
+    var dark = CreatePopulationTemplate("template.godot-group.dark", "template.godot-group.dark.v1", lightWeight: 0, darkWeight: 10);
+    var group = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.godot"),
+        PopulationTemplateGroupVersionId.Parse("template-group.godot.v1"),
+        TestVersion(),
+        [
+            new WeightedPopulationTemplate(light, 1),
+            new WeightedPopulationTemplate(dark, 1),
+        ],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(rate: 0.5, secondTemplateWeight: 0.25));
+    var groupDocument = GodotResourceBridge.ExportPopulationTemplateGroup(
+        GodotResourcePath.Parse("res://genomancy/template-group.godot.json"),
+        group);
+    var importedGroup = GodotResourceBridge.ImportPopulationTemplateGroup(groupDocument, TestVersion());
+    var failing = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.godot-result.failure"),
+        CreateMinimalHumanBuilder,
+        [
+            new AssertPopulationTemplateFrequencyStep(
+                light,
+                Id("group.common"),
+                Id("gene.skin"),
+                Id("allele.skin.light"),
+                sampleCount: 20,
+                seed: 99,
+                new StatisticalTolerance(expectedProportion: 0, absoluteTolerance: 0)),
+        ],
+        tags: ["godot", "result"]);
+    var result = ResourceTestRunner.Run([failing]);
+    var resultDocument = GodotResourceBridge.ExportResourceTestResult(
+        GodotResourcePath.Parse("user://genomancy/resource-test-result.godot.json"),
+        result);
+    var importedResult = GodotResourceBridge.ImportResourceTestResult(resultDocument);
+    var package = new GodotResourcePackage("genomancy.godot-result-package", [resultDocument, groupDocument]);
+
+    AssertEqual(GodotResourceKind.PopulationTemplateGroup, groupDocument.Kind);
+    AssertEqual(TestVersion().Value, groupDocument.SystemDefinitionVersion);
+    AssertTrue(importedGroup.IsSuccess, GodotDiagnosticsToString(importedGroup.Diagnostics));
+    AssertEqual(group, importedGroup.Value);
+    AssertEqual(GodotResourceKind.ResourceTestResult, resultDocument.Kind);
+    AssertEqual(TestVersion().Value, resultDocument.SystemDefinitionVersion);
+    AssertTrue(resultDocument.Tags.SequenceEqual(["godot", "result"]), "Result document tags must be sorted and preserved.");
+    AssertTrue(importedResult.IsSuccess, GodotDiagnosticsToString(importedResult.Diagnostics));
+    AssertEqual(
+        ResourceTestResultJsonCodec.WriteToText(result),
+        ResourceTestResultJsonCodec.WriteToText(importedResult.Value ?? throw new InvalidOperationException("Result import failed.")));
+    AssertEqual(groupDocument, package.Get(GodotResourcePath.Parse("res://genomancy/template-group.godot.json")));
+    AssertTrue(
+        !GodotResourceBridge.ImportPopulationTemplateGroup(resultDocument, TestVersion()).IsSuccess,
+        "Importing a result as a template group must report a kind mismatch.");
 }
 
 static void GodotAdapterBridgesResourceTestsAndRuntimeStartup()

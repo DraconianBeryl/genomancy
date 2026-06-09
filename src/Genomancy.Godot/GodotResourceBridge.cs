@@ -53,6 +53,29 @@ public static class GodotResourceBridge
             () => PopulationTemplateJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson), expectedSystemDefinitionVersion));
     }
 
+    public static GodotResourceDocument ExportPopulationTemplateGroup(
+        GodotResourcePath path,
+        PopulationTemplateGroupVersion group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.PopulationTemplateGroup,
+            PopulationTemplateGroupJsonCodec.WriteToText(group),
+            group.SystemDefinitionVersion.Value);
+    }
+
+    public static GodotAdapterResult<PopulationTemplateGroupVersion> ImportPopulationTemplateGroup(
+        GodotResourceDocument document,
+        SystemDefinitionVersion expectedSystemDefinitionVersion)
+    {
+        return Import(
+            document,
+            GodotResourceKind.PopulationTemplateGroup,
+            () => PopulationTemplateGroupJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson), expectedSystemDefinitionVersion));
+    }
+
     public static GodotResourceDocument ExportResourceTests(
         GodotResourcePath path,
         IEnumerable<ResourceTestSpecification> specifications)
@@ -85,6 +108,40 @@ public static class GodotResourceBridge
             document,
             GodotResourceKind.ResourceTests,
             () => ResourceTestJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
+    }
+
+    public static GodotResourceDocument ExportResourceTestResult(
+        GodotResourcePath path,
+        ResourceTestRunResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var versions = result.Cases
+            .SelectMany(testCase => testCase.ReproducibilityPackets)
+            .Select(packet => packet.ResourceSetVersion.Value)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var tags = result.Cases
+            .SelectMany(testCase => testCase.Tags)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.ResourceTestResult,
+            ResourceTestResultJsonCodec.WriteToText(result),
+            string.Join(",", versions),
+            tags);
+    }
+
+    public static GodotAdapterResult<ResourceTestRunResult> ImportResourceTestResult(GodotResourceDocument document)
+    {
+        return Import(
+            document,
+            GodotResourceKind.ResourceTestResult,
+            () => ResourceTestResultJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
     }
 
     private static GodotAdapterResult<T> Import<T>(

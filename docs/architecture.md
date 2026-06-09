@@ -10,8 +10,10 @@ Implemented optional boundaries:
 
 - `Genomancy.Godot` depends on `Genomancy.Core` and provides package-free
   Godot-facing resource documents, resource packages, import/export bridges, and
-  runtime startup diagnostics. It intentionally does not move genetics behavior
-  into adapter types.
+  runtime startup diagnostics. It currently bridges genomes, population
+  templates, population template groups, resource-test specifications, and
+  resource-test results. It intentionally does not move genetics behavior into
+  adapter types.
 - `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
   atomic JSON-file persistence using caller-supplied core stream codecs.
 

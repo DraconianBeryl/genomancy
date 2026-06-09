@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 19 - Population template-group codecs (verified); later hardening/release work is next |
+| Current implementation slice | Slice 20 - Godot adapter coverage for template groups and test results (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -81,6 +81,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-08 | Refine Slice 17 to serialized resource-test specifications for the Slice 16 population-template frequency assertion. | Slice 17 implementation | Makes designer-authored JSON/binary resource-test specs able to carry embedded population-template statistical assertions while deferring broader statistical registries, external template references, and, until Slice 18, result codecs. | Accepted |
 | 2026-06-08 | Refine Slice 18 to deterministic JSON and preliminary binary codecs for resource-test run results, diagnostics, and reproducibility packets. | Slice 18 implementation | Makes resource-test outcomes portable without defining resource-pack layout or persistence policy; storage integration, manifests, retention, and compact binary schemas remain deferred. | Accepted |
 | 2026-06-09 | Refine Slice 19 to deterministic JSON and preliminary binary codecs for embedded population template-group versions. | Slice 19 implementation | Makes nested template groups portable while preserving Slice 11's embedded-version model; external template/group registries, resource-pack references, compact binary schemas, and structure-level statistical reports remain deferred. | Accepted |
+| 2026-06-09 | Refine Slice 20 to package-free Godot adapter import/export for population template groups and resource-test run results. | Slice 20 implementation | Extends the existing Godot-facing DTO bridge to newer core codecs without adding GodotSharp resource classes, editor plugins, binary import/export, or persistence policy. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1151,7 +1152,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Resource-pack result persistence, result manifests, external packet files, result history/retention, timestamps/durations, richer execution metrics, report rendering, compact binary result schemas, or storage/Godot result adapters.
+- Resource-pack result persistence, result manifests, external packet files, result history/retention, timestamps/durations, richer execution metrics, report rendering, compact binary result schemas, or storage-backed result adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-SERIAL, REQ-STORAGE.
 
@@ -1201,9 +1202,60 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- External template/template-group reference registries, resource-pack manifests, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, compact binary template-group schemas, or storage/Godot template-group adapters.
+- External template/template-group reference registries, resource-pack manifests, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, compact binary template-group schemas, or storage-backed template-group adapters.
 
 **Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-SERIAL, REQ-RANDOM.
+
+### Slice 20 - Godot adapter coverage for template groups and test results
+
+**Status:** Verified on 2026-06-09 for the refined Slice 20 acceptance criteria. GodotSharp resource classes, editor tooling, and persistence/export packaging remain **In progress**.
+
+**Objective:** Expose the Slice 18 and Slice 19 core codecs through the existing package-free Godot-facing resource document bridge.
+
+**Deliverables**
+
+- Add Godot resource kind constants for population template groups and resource-test run results.
+- Export/import `PopulationTemplateGroupVersion` documents using the core template-group JSON codec and system-definition version metadata.
+- Export/import `ResourceTestRunResult` documents using the core result JSON codec.
+- Preserve resource-test result tag metadata and reproducibility-packet system-version metadata on Godot resource documents.
+- Keep adapter diagnostics consistent for kind mismatches and import failures.
+
+**Acceptance criteria**
+
+- Population template-group Godot documents round trip through the adapter.
+- Resource-test result Godot documents round trip through the adapter.
+- Template-group documents expose the expected system-definition version metadata.
+- Resource-test result documents expose sorted tag metadata and packet-derived system-definition version metadata.
+- Importing a document through the wrong Godot resource kind returns a stable adapter diagnostic.
+
+**Tests**
+
+- Godot adapter template-group export/import round trip.
+- Godot adapter resource-test result export/import round trip.
+- Resource package lookup for the new document kinds.
+- Kind-mismatch diagnostic for importing a resource-test result as a template group.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `GodotResourceKind.PopulationTemplateGroup`.
+- `GodotResourceKind.ResourceTestResult`.
+- `GodotResourceBridge.ExportPopulationTemplateGroup` and `ImportPopulationTemplateGroup`.
+- `GodotResourceBridge.ExportResourceTestResult` and `ImportResourceTestResult`.
+- Godot adapter tests for template-group and result documents.
+
+**Implementation simplification choices**
+
+- The adapter continues to use package-free `GodotResourceDocument` DTOs, not GodotSharp `Resource` subclasses.
+- Import/export uses JSON payloads only; binary Godot document import/export remains deferred.
+- Resource-test result document system-version metadata is derived from embedded reproducibility packets, so passing results without packets may have empty version metadata.
+- No Godot editor plugin, addon layout, save path convention, or export packaging behavior is added.
+
+**Not yet implemented**
+
+- GodotSharp `Resource` subclasses for template groups/results, editor inspectors/importers, binary Godot resource import/export, addon layout, `.tres`/`.res` export, runtime node helpers, save/package persistence, and Godot engine-version matrices.
+
+**Requirements advanced:** REQ-GODOT, REQ-TGROUP, REQ-RTEST, REQ-SERIAL.
 
 ### Later hardening and release work
 
@@ -1347,6 +1399,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - preliminary binary codec for population template-group versions
   - embedded direct template and child template-group serialization
   - cross-template blend policy and selection-weight preservation
+- Slice 20 Godot adapter coverage for template groups and test results:
+  - Godot-facing resource kinds for population template groups and resource-test results
+  - package-free import/export bridge methods for population template groups
+  - package-free import/export bridge methods for resource-test run results
+  - adapter metadata for result tags and packet-derived system-definition versions
 
 ### Not yet implemented
 
@@ -1359,7 +1416,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, severity filtering, runtime-safe subset handling, and result persistence policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
-- GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, and Godot engine-version matrices.
+- GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
 
 ### Recorded simplifications
@@ -1381,6 +1438,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 17 embeds population-template statistical assertion data directly in serialized resource-test steps; external template references and broader statistical registries are deferred.
 - Slice 18 serializes resource-test result fields and embedded reproducibility packets only; result persistence, manifests, reporting metadata, and compact binary schemas are deferred.
 - Slice 19 serializes template groups with embedded templates and child groups only; external references, manifests, and compact binary schemas remain deferred.
+- Slice 20 extends only the package-free Godot document bridge; GodotSharp resources, editor tooling, binary resources, and persistence/export packaging remain deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1480,6 +1538,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - Godot adapter genome/template document round trips
   - Godot adapter kind mismatch and import failure diagnostics
   - Godot adapter resource-test import/export, resource package behavior, and runtime startup diagnostics
+- Slice 20 package-free implementation tests in `tests/Genomancy.Tests`:
+  - Godot adapter template-group document round trip
+  - Godot adapter resource-test result document round trip
+  - Godot resource package lookup for template-group/result documents
+  - Godot adapter kind-mismatch diagnostic for new resource kinds
 - Slice 16 package-free implementation tests in `tests/Genomancy.Tests`:
   - deterministic population-template allele-frequency simulation and ranked-observation accounting
   - configured simulation maximum-sample rejection
@@ -1522,13 +1585,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 17 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 18 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 19 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 20 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. The package-free Godot adapter can bridge genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
 
 ### Test layers required by the project
 
