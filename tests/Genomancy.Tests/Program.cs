@@ -98,6 +98,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
+    ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
@@ -1985,6 +1986,51 @@ static void ResourceTestBinaryCodecRoundTripsExecutableSpecs()
     AssertEqual(ResourceTestJsonCodec.WriteToText(specs), ResourceTestJsonCodec.WriteToText(roundTrip));
     AssertEqual(ResourceTestStatus.Passed, result.Status);
     AssertThrows<GenomeSerializationException>(() => ResourceTestBinaryCodec.ReadFromBuffer(buffer[..4]));
+}
+
+static void ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets()
+{
+    var template = CreatePopulationTemplate("template.result-codec", "template.result-codec.v1", 1, 1);
+    var failing = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.result-codec.failure"),
+        CreateMinimalHumanBuilder,
+        [
+            new AssertPopulationTemplateFrequencyStep(
+                template,
+                Id("group.common"),
+                Id("gene.skin"),
+                Id("allele.skin.light"),
+                sampleCount: 100,
+                seed: 42,
+                new StatisticalTolerance(expectedProportion: 1, absoluteTolerance: 0)),
+        ],
+        tags: ["result", "statistical"]);
+    var passing = CreateResourceTestSpecification(
+        "resource-test.result-codec.passing",
+        invalidGene: false,
+        tags: ["result"]).ToDefinition();
+    var result = ResourceTestRunner.Run([passing, failing]);
+    var text = ResourceTestResultJsonCodec.WriteToText(result);
+    var jsonRoundTrip = ResourceTestResultJsonCodec.ReadFromBuffer(
+        ResourceTestResultJsonCodec.WriteToBuffer(result));
+    var binary = ResourceTestResultBinaryCodec.WriteToBuffer(result);
+    var binaryRoundTrip = ResourceTestResultBinaryCodec.ReadFromBuffer(binary);
+    var failure = jsonRoundTrip.Cases.Single(testCase => testCase.Status == ResourceTestStatus.Failed);
+
+    AssertEqual(ResourceTestStatus.Failed, jsonRoundTrip.Status);
+    AssertEqual(2, jsonRoundTrip.Cases.Count);
+    AssertEqual("RESOURCE_TEST_STATISTICAL_TOLERANCE_FAILED", failure.Diagnostics.Single().Code);
+    AssertEqual(42UL, failure.ReproducibilityPackets.Single().Seed);
+    AssertEqual(text, ResourceTestResultJsonCodec.WriteToText(jsonRoundTrip));
+    AssertEqual(text, ResourceTestResultJsonCodec.WriteToText(binaryRoundTrip));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestResultJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"status":"Passed","cases":[]}"""u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestResultJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"status":"Passed","cases":[{"testId":"resource-test.mismatch","status":"Failed","tags":[],"diagnostics":[],"reproducibilityPackets":[]}]}
+            """u8));
+    AssertThrows<GenomeSerializationException>(() => ResourceTestResultBinaryCodec.ReadFromBuffer(binary[..4]));
 }
 
 static void JsonFileStoragePersistsResourceTestSpecsOutsideCore()

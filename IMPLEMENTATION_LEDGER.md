@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 17 - Serialized statistical resource-test assertions (verified); later hardening/release work is next |
+| Current implementation slice | Slice 18 - Resource-test result and failure-packet codecs (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -74,11 +74,12 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
 | 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
 | 2026-06-07 | Refine Slice 12 to an in-memory resource-test runner with fixture factories, validation/freeze operations, validation assertions, custom step extensibility, deterministic result ordering, and structured diagnostics. | Slice 12 implementation | Establishes the first resource-testing framework surface while deferring serialized test resources, resource loading, snapshots, fuzz/matrix execution, reproducibility packets, and statistical assertions. | Accepted |
-| 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets. | Accepted |
+| 2026-06-08 | Refine Slice 13 to typed serialized resource-test specifications, deterministic JSON codecs, materialization into executable definitions, and tag include/exclude filtering. | Slice 13 implementation | Adds a designer-authored resource-test boundary while deferring full resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and, until Slice 18, serialized result/failure packets. | Accepted |
 | 2026-06-08 | Refine Slice 14 to shared preliminary binary envelopes for genomes/templates/resource tests and an optional atomic JSON-file storage adapter in a separate assembly. | Slice 14 implementation | Advances serialization and storage boundaries without adding provider dependencies to core; SQLite, migrations, custom compact binary storage, and remaining model codecs are deferred. | Accepted |
 | 2026-06-08 | Refine Slice 15 to a package-free `Genomancy.Godot` adapter with Godot-style resource documents/packages, core codec import/export, runtime startup diagnostics, and package metadata. | Slice 15 implementation | Advances Godot integration without adding a GodotSharp dependency; actual Godot `Resource` subclasses, editor plugins, and export packaging are deferred. | Accepted |
 | 2026-06-08 | Refine Slice 16 to bounded population-template allele-frequency simulation, absolute statistical tolerances, resource-test statistical assertions, and deterministic JSON reproducibility packets. | Slice 16 implementation | Establishes reusable statistical/reproducibility primitives while deferring reproduction distributions, template-group simulation reports, confidence models, outlier policies, and, until Slice 17, serialized statistical step specifications. | Accepted |
-| 2026-06-08 | Refine Slice 17 to serialized resource-test specifications for the Slice 16 population-template frequency assertion. | Slice 17 implementation | Makes designer-authored JSON/binary resource-test specs able to carry embedded population-template statistical assertions while deferring broader statistical registries, external template references, result codecs, and resource-pack persistence. | Accepted |
+| 2026-06-08 | Refine Slice 17 to serialized resource-test specifications for the Slice 16 population-template frequency assertion. | Slice 17 implementation | Makes designer-authored JSON/binary resource-test specs able to carry embedded population-template statistical assertions while deferring broader statistical registries, external template references, and, until Slice 18, result codecs. | Accepted |
+| 2026-06-08 | Refine Slice 18 to deterministic JSON and preliminary binary codecs for resource-test run results, diagnostics, and reproducibility packets. | Slice 18 implementation | Makes resource-test outcomes portable without defining resource-pack layout or persistence policy; storage integration, manifests, retention, and compact binary schemas remain deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -840,7 +841,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 13 - Resource testing framework expansion
 
-**Status:** Verified on 2026-06-08 for the refined Slice 13 acceptance criteria. Broader requirement families remain **In progress** where later slices add resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and serialized result/failure packets.
+**Status:** Verified on 2026-06-08 for the refined Slice 13 acceptance criteria. Broader requirement families remain **In progress** where later slices add resource-pack loading, snapshots, fuzz/matrix execution, statistical assertions, and result persistence.
 
 **Objective:** Add a typed serialized resource-test specification boundary that can materialize designer-authored validation tests into the Slice 12 runner.
 
@@ -881,11 +882,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Serialized steps cover the Slice 12 built-in validation/freeze/assertion operations only.
 - JSON is the only resource-test serialization format in this slice; binary test codecs remain deferred.
 - Tag filtering is include/exclude only; severity filtering and runtime-safe subsets remain deferred.
-- Resource-test results/failure packets are still in-memory only and are not serialized.
+- Resource-test results/failure packets are still in-memory only in Slice 13; Slice 18 adds result codecs while persistence remains deferred.
 
 **Not yet implemented**
 
-- Resource-pack loading, external fixture references, binary resource-test codecs, serialized result/failure packets, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 17 population-template frequency assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, and integration with storage or Godot adapters.
+- Resource-pack loading, external fixture references, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 17 population-template frequency assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, result persistence, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
@@ -940,7 +941,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Compact stable binary schemas, binary codecs for body-plan variants/template groups/mosaic state, serialized result/failure packets, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, concurrency controls, untrusted-input size limits, and storage integration fixtures beyond JSON resource tests.
+- Compact stable binary schemas, binary codecs for body-plan variants/template groups/mosaic state, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, concurrency controls, untrusted-input size limits, and storage integration fixtures beyond JSON resource tests.
 
 **Requirements advanced:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
 
@@ -1095,13 +1096,63 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Population templates are embedded directly in the resource-test step payload instead of referenced from a resource pack or fixture registry.
 - Only the Slice 16 population-template allele-frequency assertion is serialized; broader statistical operation registries remain deferred.
 - Optional limits serialize only the maximum sample count currently supported by `SimulationResourceLimits`.
-- Result/failure-packet persistence remains runtime result state only; no resource-test result codec is added.
+- Result/failure-packet persistence remains runtime result state only in Slice 17; Slice 18 adds resource-test result codecs without adding persistence.
 
 **Not yet implemented**
 
-- External template fixture references, template-group statistical assertions, reproduction/transmission distribution assertions, mutation/trace statistical assertions, confidence/outlier statistical policies, serialized result/failure-packet codecs, resource-pack loading, or resource-pack failure-packet persistence.
+- External template fixture references, template-group statistical assertions, reproduction/transmission distribution assertions, mutation/trace statistical assertions, confidence/outlier statistical policies, resource-pack loading, or resource-pack failure-packet persistence.
 
 **Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-TEMPLATE, REQ-SERIAL.
+
+### Slice 18 - Resource-test result and failure-packet codecs
+
+**Status:** Verified on 2026-06-08 for the refined Slice 18 acceptance criteria. Resource-pack persistence and broader reporting remain **In progress**.
+
+**Objective:** Serialize resource-test run outcomes, diagnostics, and reproducibility packets through deterministic core stream/buffer APIs without assigning filesystem or resource-pack ownership to core.
+
+**Deliverables**
+
+- Define a versioned deterministic JSON envelope for resource-test run results.
+- Preserve run/case status, stable test IDs, ordered tags, ordered diagnostics, and embedded reproducibility packets.
+- Validate that serialized aggregate run status matches the status derived from serialized case results.
+- Add a preliminary binary result codec using the shared binary envelope and canonical result JSON payload.
+- Expose stream and buffer operations without filesystem access.
+
+**Acceptance criteria**
+
+- JSON round trips preserve passed and failed cases, diagnostics, tags, and reproducibility packets.
+- Canonical JSON output is deterministic before and after round trip.
+- Binary round trips produce the same canonical JSON result representation.
+- Unknown JSON envelope versions, inconsistent aggregate status, and truncated binary payloads are rejected.
+- Core result codecs perform no filesystem access.
+
+**Tests**
+
+- Mixed passing/failing resource-test result JSON round trip.
+- Statistical failure diagnostic and reproducibility packet preservation.
+- Preliminary binary result round trip.
+- Unknown JSON envelope version, inconsistent status, and truncated binary rejection.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestResultJsonCodec`.
+- `ResourceTestResultBinaryCodec`.
+- Deterministic case, tag, diagnostic, and packet ordering in serialized results.
+- Aggregate status consistency validation during JSON reads.
+
+**Implementation simplification choices**
+
+- Binary result serialization wraps canonical JSON in the existing preliminary binary envelope.
+- Reproducibility packets are embedded in each case result rather than referenced from external files.
+- Result codecs serialize current result fields only; timestamps, durations, allocation metrics, host metadata, and attachments are not introduced.
+- Persistence location, retention, naming, and resource-pack manifest integration remain outside core.
+
+**Not yet implemented**
+
+- Resource-pack result persistence, result manifests, external packet files, result history/retention, timestamps/durations, richer execution metrics, report rendering, compact binary result schemas, or storage/Godot result adapters.
+
+**Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-SERIAL, REQ-STORAGE.
 
 ### Later hardening and release work
 
@@ -1235,6 +1286,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - embedded population-template statistical assertion payloads in resource-test JSON
   - materialization of serialized statistical assertions into executable resource-test steps
   - resource-test binary compatibility through the existing JSON-wrapped binary codec
+- Slice 18 resource-test result and failure-packet codecs:
+  - deterministic JSON codec for resource-test run results
+  - preliminary binary codec for resource-test run results
+  - serialized diagnostics, tags, case statuses, and embedded reproducibility packets
+  - aggregate result status consistency validation
 
 ### Not yet implemented
 
@@ -1245,7 +1301,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-test result codecs, resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, severity filtering, and runtime-safe subset handling.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, severity filtering, runtime-safe subset handling, and result persistence policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -1266,7 +1322,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 14 retains JSON-wrapped preliminary binary envelopes and introduces only generic JSON-file storage; compact binary schemas, SQLite/custom-binary storage, migrations, and resource-pack layouts remain deferred.
 - Slice 15 uses package-free Godot-facing DTOs and bridges; GodotSharp resource classes, editor plugins, addon layout, binary import/export, and engine-specific packaging are deferred.
 - Slice 16 starts statistical coverage with sequential population-template allele-frequency sampling, absolute tolerances, sample-count limits, and JSON failure packets; broader simulation domains and confidence/outlier models are deferred.
-- Slice 17 embeds population-template statistical assertion data directly in serialized resource-test steps; external template references, broader statistical registries, and result/failure-packet codecs are deferred.
+- Slice 17 embeds population-template statistical assertion data directly in serialized resource-test steps; external template references and broader statistical registries are deferred.
+- Slice 18 serializes resource-test result fields and embedded reproducibility packets only; result persistence, manifests, reporting metadata, and compact binary schemas are deferred.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1374,6 +1431,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 17 package-free implementation tests in `tests/Genomancy.Tests`:
   - resource-test JSON round trip for serialized population-template frequency assertions
   - materialized serialized statistical assertion execution with expected diagnostic and reproducibility packet metadata
+- Slice 18 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test result JSON round trip for mixed passing/failing cases
+  - statistical failure diagnostic and reproducibility packet preservation
+  - resource-test result binary round trip
+  - unknown JSON envelope version, inconsistent aggregate status, and truncated binary rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1396,13 +1458,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 15 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 16 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 17 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 18 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion; repository-level resource-pack loading and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers; repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
 
 ### Test layers required by the project
 
