@@ -80,6 +80,7 @@ var tests = new (string Name, Action Test)[]
     ("Mosaic regional expression uses assigned genome version", MosaicRegionalExpressionUsesAssignedGenomeVersion),
     ("Mosaic inheritance sites resolve regional genome sources", MosaicInheritanceSitesResolveRegionalGenomeSources),
     ("Chimeric material remains distinct from integrated variants", ChimericMaterialRemainsDistinctFromIntegratedVariants),
+    ("Mosaic genome codecs preserve regions and chimeric materials", MosaicGenomeCodecsPreserveRegionsAndChimericMaterials),
     ("Population template sampling is deterministic and serializable", PopulationTemplateSamplingIsDeterministicAndSerializable),
     ("Population template blending combines allele weights", PopulationTemplateBlendingCombinesAlleleWeights),
     ("Population generation produces stable versioned genomes", PopulationGenerationProducesStableVersionedGenomes),
@@ -1561,6 +1562,47 @@ static void ChimericMaterialRemainsDistinctFromIntegratedVariants()
     AssertTrue(!mosaic.ChimericMaterials[0].IsIntegratedBodyPlanVariant, "Chimeric material must remain distinct from integrated body-plan variants.");
     AssertEqual(Id("chimera.absorbed-twin"), mosaic.ChimericMaterials[0].Id);
     AssertEqual(Id("body.human"), variant.BaseBodyPlanId);
+}
+
+static void MosaicGenomeCodecsPreserveRegionsAndChimericMaterials()
+{
+    var primary = CreateMosaicGenomeVersion("genome.mosaic-codec.primary", "allele.skin.light");
+    var regional = CreateMosaicGenomeVersion("genome.mosaic-codec.regional", "allele.skin.dark");
+    var chimera = CreateMosaicGenomeVersion("genome.mosaic-codec.chimera", "allele.skin.dark");
+    var mosaic = new MosaicGenomeState(
+        primary,
+        [new MosaicRegionAssignment(MosaicRegionId.Parse("region.left-arm"), regional, coverage: 0.75)],
+        [
+            new ChimericMaterialState(
+                Id("chimera.codec"),
+                chimera,
+                [MosaicRegionId.Parse("region.left-arm"), MosaicRegionId.Parse("region.torso")],
+                isIntegratedBodyPlanVariant: false),
+        ]);
+    var text = MosaicGenomeJsonCodec.WriteToText(mosaic);
+    var jsonRoundTrip = MosaicGenomeJsonCodec.ReadFromBuffer(MosaicGenomeJsonCodec.WriteToBuffer(mosaic), TestVersion());
+    var binary = MosaicGenomeBinaryCodec.WriteToBuffer(mosaic);
+    var binaryRoundTrip = MosaicGenomeBinaryCodec.ReadFromBuffer(binary, TestVersion());
+
+    AssertEqual(text, MosaicGenomeJsonCodec.WriteToText(jsonRoundTrip));
+    AssertEqual(text, MosaicGenomeJsonCodec.WriteToText(binaryRoundTrip));
+    AssertGenomeVersionsEqual(primary, jsonRoundTrip.PrimaryGenomeVersion);
+    AssertGenomeVersionsEqual(regional, jsonRoundTrip.ResolveGenomeForRegion(MosaicRegionId.Parse("region.left-arm")));
+    AssertGenomeVersionsEqual(primary, jsonRoundTrip.ResolveGenomeForRegion(MosaicRegionId.Parse("region.unassigned")));
+    AssertEqual(0.75, jsonRoundTrip.Regions.Single().Coverage);
+    AssertEqual(Id("chimera.codec"), jsonRoundTrip.ChimericMaterials.Single().Id);
+    AssertTrue(
+        jsonRoundTrip.ChimericMaterials.Single().ExpressedRegionIds.SequenceEqual([
+            MosaicRegionId.Parse("region.left-arm"),
+            MosaicRegionId.Parse("region.torso"),
+        ]),
+        "Chimeric expressed regions must be preserved in deterministic order.");
+    AssertTrue(!jsonRoundTrip.ChimericMaterials.Single().IsIntegratedBodyPlanVariant, "Chimera integration flag must round trip.");
+    AssertThrows<GenomeSerializationException>(
+        () => MosaicGenomeJsonCodec.ReadFromBuffer(MosaicGenomeJsonCodec.WriteToBuffer(mosaic), SystemDefinitionVersion.Parse("other.1")));
+    AssertThrows<GenomeSerializationException>(
+        () => MosaicGenomeJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"primaryGenomeVersion":"{}"}"""u8, TestVersion()));
+    AssertThrows<GenomeSerializationException>(() => MosaicGenomeBinaryCodec.ReadFromBuffer(binary[..4], TestVersion()));
 }
 
 static void PopulationTemplateSamplingIsDeterministicAndSerializable()
