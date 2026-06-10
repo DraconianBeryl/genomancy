@@ -106,6 +106,7 @@ var tests = new (string Name, Action Test)[]
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
+    ("Godot adapter round trips mosaic genome documents", GodotAdapterRoundTripsMosaicGenomeDocuments),
     ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
 
@@ -2279,6 +2280,38 @@ static void GodotAdapterRoundTripsTemplateGroupAndResultDocuments()
     AssertTrue(
         !GodotResourceBridge.ImportPopulationTemplateGroup(resultDocument, TestVersion()).IsSuccess,
         "Importing a result as a template group must report a kind mismatch.");
+}
+
+static void GodotAdapterRoundTripsMosaicGenomeDocuments()
+{
+    var primary = CreateMosaicGenomeVersion("genome.godot-mosaic.primary", "allele.skin.light");
+    var regional = CreateMosaicGenomeVersion("genome.godot-mosaic.regional", "allele.skin.dark");
+    var chimera = CreateMosaicGenomeVersion("genome.godot-mosaic.chimera", "allele.skin.dark");
+    var mosaic = new MosaicGenomeState(
+        primary,
+        [new MosaicRegionAssignment(MosaicRegionId.Parse("region.face"), regional, coverage: 0.5)],
+        [
+            new ChimericMaterialState(
+                Id("chimera.godot"),
+                chimera,
+                [MosaicRegionId.Parse("region.face")]),
+        ]);
+    var document = GodotResourceBridge.ExportMosaicGenome(
+        GodotResourcePath.Parse("res://genomancy/mosaic.godot.json"),
+        mosaic);
+    var imported = GodotResourceBridge.ImportMosaicGenome(document, TestVersion());
+    var package = new GodotResourcePackage("genomancy.godot-mosaic-package", [document]);
+
+    AssertEqual(GodotResourceKind.MosaicGenome, document.Kind);
+    AssertEqual(TestVersion().Value, document.SystemDefinitionVersion);
+    AssertTrue(imported.IsSuccess, GodotDiagnosticsToString(imported.Diagnostics));
+    AssertEqual(
+        MosaicGenomeJsonCodec.WriteToText(mosaic),
+        MosaicGenomeJsonCodec.WriteToText(imported.Value ?? throw new InvalidOperationException("Mosaic import failed.")));
+    AssertEqual(document, package.Get(GodotResourcePath.Parse("res://genomancy/mosaic.godot.json")));
+    AssertTrue(
+        !GodotResourceBridge.ImportGenomeVersion(document, TestVersion()).IsSuccess,
+        "Importing a mosaic genome as a genome version must report a kind mismatch.");
 }
 
 static void GodotAdapterBridgesResourceTestsAndRuntimeStartup()

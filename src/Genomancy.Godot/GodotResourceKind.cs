@@ -8,6 +8,8 @@ public static class GodotResourceKind
 
     public const string PopulationTemplateGroup = "genomancy.populationTemplateGroup";
 
+    public const string MosaicGenome = "genomancy.mosaicGenome";
+
     public const string ResourceTests = "genomancy.resourceTests";
 
     public const string ResourceTestResult = "genomancy.resourceTestResult";

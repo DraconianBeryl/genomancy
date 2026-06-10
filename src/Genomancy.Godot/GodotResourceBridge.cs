@@ -1,6 +1,7 @@
 using System.Text;
 using Genomancy.Core.Definitions;
 using Genomancy.Core.Genome;
+using Genomancy.Core.Mosaicism;
 using Genomancy.Core.ResourceTesting;
 using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
@@ -74,6 +75,29 @@ public static class GodotResourceBridge
             document,
             GodotResourceKind.PopulationTemplateGroup,
             () => PopulationTemplateGroupJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson), expectedSystemDefinitionVersion));
+    }
+
+    public static GodotResourceDocument ExportMosaicGenome(
+        GodotResourcePath path,
+        MosaicGenomeState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.MosaicGenome,
+            MosaicGenomeJsonCodec.WriteToText(state),
+            state.PrimaryGenomeVersion.SystemDefinitionVersion.Value);
+    }
+
+    public static GodotAdapterResult<MosaicGenomeState> ImportMosaicGenome(
+        GodotResourceDocument document,
+        SystemDefinitionVersion expectedSystemDefinitionVersion)
+    {
+        return Import(
+            document,
+            GodotResourceKind.MosaicGenome,
+            () => MosaicGenomeJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson), expectedSystemDefinitionVersion));
     }
 
     public static GodotResourceDocument ExportResourceTests(

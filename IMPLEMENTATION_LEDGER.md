@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 22 - Standalone mosaic genome codecs (verified); later hardening/release work is next |
+| Current implementation slice | Slice 23 - Godot adapter coverage for mosaic genome state (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -84,6 +84,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-09 | Refine Slice 20 to package-free Godot adapter import/export for population template groups and resource-test run results. | Slice 20 implementation | Extends the existing Godot-facing DTO bridge to newer core codecs without adding GodotSharp resource classes, editor plugins, binary import/export, or persistence policy. | Accepted |
 | 2026-06-09 | Refine Slice 21 to a preliminary binary codec for runtime body-plan variants. | Slice 21 implementation | Closes the current runtime-variant binary round-trip gap using the shared JSON-wrapped binary envelope while deferring compact binary schemas and variant persistence in genome versions. | Accepted |
 | 2026-06-09 | Refine Slice 22 to standalone JSON and preliminary binary codecs for mosaic genome state. | Slice 22 implementation | Makes ID-based mosaic/chimeric runtime state portable as a separate resource while deferring genome-version embedding, regional geometry, overlapping expression, and full chimeric workflows. | Accepted |
+| 2026-06-09 | Refine Slice 23 to package-free Godot adapter import/export for standalone mosaic genome state. | Slice 23 implementation | Extends the existing Godot-facing DTO bridge to mosaic resources without adding GodotSharp resources, binary import/export, persistence policy, or richer mosaic behavior. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1352,9 +1353,58 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Genome-version-embedded mosaic persistence, regional geometry, overlapping/multi-region expression, automatic chimeric expression integration, absorbed-twin inheritance workflows, mutation/repair over regions, reproduction workflows from inheritance sites, resource-pack references, compact binary mosaic schemas, or Godot/storage mosaic adapters.
+- Genome-version-embedded mosaic persistence, regional geometry, overlapping/multi-region expression, automatic chimeric expression integration, absorbed-twin inheritance workflows, mutation/repair over regions, reproduction workflows from inheritance sites, resource-pack references, compact binary mosaic schemas, or storage-backed mosaic adapters.
 
 **Requirements advanced:** REQ-MOSAIC, REQ-SERIAL, REQ-GENOME.
+
+### Slice 23 - Godot adapter coverage for mosaic genome state
+
+**Status:** Verified on 2026-06-09 for the refined Slice 23 acceptance criteria. GodotSharp resources, binary Godot import/export, and storage-backed mosaic adapters remain **In progress**.
+
+**Objective:** Expose the Slice 22 standalone mosaic genome codec through the existing package-free Godot-facing resource document bridge.
+
+**Deliverables**
+
+- Add a Godot resource kind constant for standalone mosaic genome state.
+- Export/import `MosaicGenomeState` documents using the core mosaic JSON codec.
+- Preserve system-definition version metadata from the primary genome version.
+- Keep adapter diagnostics consistent for kind mismatches and import failures.
+- Support mosaic genome documents in existing `GodotResourcePackage` lookup behavior.
+
+**Acceptance criteria**
+
+- Mosaic genome Godot documents round trip through the adapter.
+- Mosaic genome documents expose the expected system-definition version metadata.
+- Imported mosaic documents preserve canonical mosaic JSON representation.
+- Mosaic genome documents can be included in package-free Godot resource packages.
+- Importing a mosaic document through the wrong Godot resource kind returns a stable adapter diagnostic.
+
+**Tests**
+
+- Godot adapter mosaic genome export/import round trip.
+- Godot mosaic document metadata verification.
+- Godot resource package lookup for mosaic documents.
+- Kind-mismatch diagnostic for importing a mosaic genome as a genome version.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `GodotResourceKind.MosaicGenome`.
+- `GodotResourceBridge.ExportMosaicGenome` and `ImportMosaicGenome`.
+- Godot adapter tests for mosaic genome documents.
+
+**Implementation simplification choices**
+
+- The adapter continues to use package-free `GodotResourceDocument` DTOs, not GodotSharp `Resource` subclasses.
+- Import/export uses JSON payloads only; binary Godot document import/export remains deferred.
+- Mosaic document system-version metadata is derived from the primary genome version.
+- No Godot editor plugin, addon layout, save path convention, export packaging behavior, or richer mosaic runtime behavior is added.
+
+**Not yet implemented**
+
+- GodotSharp `Resource` subclasses for mosaic state, editor inspectors/importers, binary Godot resource import/export, addon layout, `.tres`/`.res` export, runtime node helpers, save/package persistence, storage-backed mosaic adapters, and Godot engine-version matrices.
+
+**Requirements advanced:** REQ-GODOT, REQ-MOSAIC, REQ-SERIAL.
 
 ### Later hardening and release work
 
@@ -1512,6 +1562,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - preliminary binary codec for mosaic genome state
   - standalone serialization of primary, regional, and chimeric genome versions
   - preservation of regional coverage and chimeric expressed-region metadata
+- Slice 23 Godot adapter coverage for mosaic genome state:
+  - Godot-facing resource kind for standalone mosaic genome state
+  - package-free import/export bridge methods for mosaic genome state
+  - adapter metadata derived from the primary genome system-definition version
 
 ### Not yet implemented
 
@@ -1661,6 +1715,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - Godot adapter resource-test result document round trip
   - Godot resource package lookup for template-group/result documents
   - Godot adapter kind-mismatch diagnostic for new resource kinds
+- Slice 23 package-free implementation tests in `tests/Genomancy.Tests`:
+  - Godot adapter mosaic genome document round trip
+  - Godot mosaic document metadata verification
+  - Godot resource package lookup for mosaic documents
+  - Godot adapter kind-mismatch diagnostic for mosaic documents
 - Slice 16 package-free implementation tests in `tests/Genomancy.Tests`:
   - deterministic population-template allele-frequency simulation and ranked-observation accounting
   - configured simulation maximum-sample rejection
@@ -1706,13 +1765,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 20 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 21 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 22 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 23 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
 
 ### Test layers required by the project
 
