@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-11 |
-| Current implementation slice | Slice 26 - JSON-file storage for resource-test results (verified); later hardening/release work is next |
+| Current implementation slice | Slice 27 - Resource-test run summaries (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -88,6 +88,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-10 | Refine Slice 24 to resource-test diagnostic severity filtering. | Slice 24 implementation | Adds report-focused diagnostic filtering while preserving execution and pass/fail semantics; runtime-safe subsets, resource-pack loading, and broader reporting remain deferred. | Accepted |
 | 2026-06-11 | Refine Slice 25 to deterministic resource-test text report formatting. | Slice 25 implementation | Adds a human-readable report export over existing run results while relying on existing JSON result codecs for machine-readable reports; CLI, storage, editor integration, and resource-pack loading remain deferred. | Accepted |
 | 2026-06-11 | Refine Slice 26 to JSON-file storage for resource-test results. | Slice 26 implementation | Adds an optional storage-module factory for persisted resource-test run results using existing core codecs and atomic JSON-file storage; manifests, retention, naming policy, and resource-pack integration remain deferred. | Accepted |
+| 2026-06-11 | Refine Slice 27 to derived resource-test run summaries. | Slice 27 implementation | Adds a reusable deterministic summary surface for result status/counts to support reports, future manifests, and future CLI status without implementing manifests, CLI output, or persistence policy. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1554,6 +1555,54 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-STORAGE, REQ-SERIAL, REQ-RANDOM.
 
+### Slice 27 - Resource-test run summaries
+
+**Status:** Verified on 2026-06-11 for the refined Slice 27 acceptance criteria. Serialized manifests, CLI status files, and retention policy remain **In progress**.
+
+**Objective:** Provide a reusable deterministic summary over `ResourceTestRunResult` so reports, future manifests, and future batch/CLI status surfaces share the same derived counts.
+
+**Deliverables**
+
+- Add an immutable resource-test run summary model.
+- Derive run status, passed/failed case counts, diagnostic counts by severity, and reproducibility packet count from an existing run result.
+- Keep summaries deterministic and independent of filesystem, timestamps, durations, or output routing.
+- Refactor the human-readable text report formatter to use the shared summary.
+
+**Acceptance criteria**
+
+- Empty run results summarize as passed with zero cases, diagnostics, and packets.
+- Mixed pass/fail results summarize total, passed, and failed case counts.
+- Error, warning, and info diagnostic counts are derived independently.
+- Reproducibility packet count is derived from all cases.
+- Existing text report output remains compatible after using the shared summary.
+
+**Tests**
+
+- Resource-test run summary over an empty result.
+- Resource-test run summary over mixed pass/fail cases.
+- Diagnostic severity count coverage for error, warning, and info diagnostics.
+- Reproducibility packet count coverage.
+- Existing text-report regression coverage remains passing.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestRunSummary`.
+- `ResourceTestRunSummary.FromResult`.
+- Text-report formatter usage of `ResourceTestRunSummary`.
+
+**Implementation simplification choices**
+
+- Summaries are derived in memory from `ResourceTestRunResult`; Slice 27 does not add a serialized summary envelope.
+- Summaries do not include timestamps, durations, file paths, command exit-code policy, or resource-pack metadata.
+- The summary type is a reusable core value, not a storage manifest.
+
+**Not yet implemented**
+
+- Serialized result manifests, CLI status output, report indexes, duration/timing metrics, retention policy, or storage-backed summary catalogs.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1726,6 +1775,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - optional typed JSON-file store factory for resource-test run results
   - result persistence through the existing deterministic result JSON codec
   - preservation of diagnostics and reproducibility packets across file save/load
+- Slice 27 resource-test run summaries:
+  - reusable derived run summary for status and counts
+  - case, diagnostic severity, and reproducibility packet counts
+  - text-report formatter backed by the shared summary surface
 
 ### Not yet implemented
 
@@ -1764,6 +1817,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 24 filters diagnostics only in reported resource-test results; execution, status calculation, reproducibility packets, and test selection remain unchanged.
 - Slice 25 formats only already-materialized resource-test results; test execution, machine-readable JSON reporting, storage, CLI exit codes, and editor integration remain unchanged.
 - Slice 26 stores resource-test results only through a typed factory over the generic JSON-file store; it does not define project file layout, retention, manifests, or output routing.
+- Slice 27 summarizes already-materialized resource-test results only; it does not serialize manifests, define CLI status output, track durations, or add storage catalogs.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1915,6 +1969,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - diagnostic preservation across save/load
   - reproducibility packet preservation across save/load
   - canonical result JSON equality after storage round trip
+- Slice 27 package-free implementation tests in `tests/Genomancy.Tests`:
+  - empty resource-test run summary
+  - mixed pass/fail case summary
+  - diagnostic severity counts for error, warning, and info
+  - reproducibility packet counting
+  - existing text-report compatibility after summary refactor
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1946,13 +2006,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 24 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 25 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 26 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 27 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, and optional JSON files through `Genomancy.Storage.JsonFile`. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result retention policy, CLI/batch execution, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, and derived in-memory summaries. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, serialized manifests, result retention policy, CLI/batch execution, and file layout do not exist yet.
 
 ### Test layers required by the project
 

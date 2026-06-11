@@ -9,17 +9,13 @@ public static class ResourceTestTextReportFormatter
         ArgumentNullException.ThrowIfNull(result);
 
         var builder = new StringBuilder();
-        var totalCases = result.Cases.Count;
-        var passedCases = result.Cases.Count(testCase => testCase.Status == ResourceTestStatus.Passed);
-        var failedCases = result.Cases.Count(testCase => testCase.Status == ResourceTestStatus.Failed);
-        var diagnostics = result.Cases.SelectMany(testCase => testCase.Diagnostics).ToArray();
-        var packetCount = result.Cases.Sum(testCase => testCase.ReproducibilityPackets.Count);
+        var summary = ResourceTestRunSummary.FromResult(result);
 
-        builder.AppendLine($"Resource test run: {result.Status}");
-        builder.AppendLine($"Cases: {totalCases} total, {passedCases} passed, {failedCases} failed");
+        builder.AppendLine($"Resource test run: {summary.Status}");
+        builder.AppendLine($"Cases: {summary.TotalCases} total, {summary.PassedCases} passed, {summary.FailedCases} failed");
         builder.AppendLine(
-            $"Diagnostics: {diagnostics.Length} total, {Count(diagnostics, ResourceTestSeverity.Error)} error, {Count(diagnostics, ResourceTestSeverity.Warning)} warning, {Count(diagnostics, ResourceTestSeverity.Info)} info");
-        builder.AppendLine($"Reproducibility packets: {packetCount}");
+            $"Diagnostics: {summary.TotalDiagnostics} total, {summary.ErrorDiagnostics} error, {summary.WarningDiagnostics} warning, {summary.InfoDiagnostics} info");
+        builder.AppendLine($"Reproducibility packets: {summary.ReproducibilityPackets}");
         builder.AppendLine("Cases:");
 
         foreach (var testCase in result.Cases)
@@ -56,11 +52,6 @@ public static class ResourceTestTextReportFormatter
         }
 
         return builder.ToString();
-    }
-
-    private static int Count(IEnumerable<ResourceTestDiagnostic> diagnostics, ResourceTestSeverity severity)
-    {
-        return diagnostics.Count(diagnostic => diagnostic.Severity == severity);
     }
 
     private static string FormatTags(IReadOnlyCollection<string> tags)

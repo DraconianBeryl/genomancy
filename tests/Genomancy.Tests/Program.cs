@@ -101,6 +101,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
     ("Resource test runner filters diagnostics by severity", ResourceTestRunnerFiltersDiagnosticsBySeverity),
     ("Resource test text report summarizes run results", ResourceTestTextReportSummarizesRunResults),
+    ("Resource test run summary counts statuses diagnostics and packets", ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -2162,6 +2163,54 @@ static void ResourceTestTextReportSummarizesRunResults()
         report.IndexOf("resource-test.report.failed", StringComparison.Ordinal)
             < report.IndexOf("resource-test.report.passed", StringComparison.Ordinal),
         "Report cases must remain deterministically sorted by resource-test id.");
+}
+
+static void ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets()
+{
+    var empty = ResourceTestRunSummary.FromResult(new ResourceTestRunResult([]));
+    var result = new ResourceTestRunResult(
+    [
+        new ResourceTestCaseResult(
+            ResourceTestId.Parse("resource-test.summary.failed"),
+            ResourceTestStatus.Failed,
+            [
+                new ResourceTestDiagnostic(ResourceTestSeverity.Info, "SUMMARY_INFO", "tests/summary/info", "Info detail."),
+                new ResourceTestDiagnostic(ResourceTestSeverity.Warning, "SUMMARY_WARNING", "tests/summary/warning", "Warning detail."),
+                new ResourceTestDiagnostic(ResourceTestSeverity.Error, "SUMMARY_ERROR", "tests/summary/error", "Error detail."),
+            ],
+            reproducibilityPackets:
+            [
+                new ReproducibilityPacket(
+                    TestVersion(),
+                    "resource-test.summary.failed",
+                    321UL,
+                    "tests/summary/random",
+                    "input",
+                    "assertion",
+                    1,
+                    0,
+                    "diagnostic"),
+            ]),
+        new ResourceTestCaseResult(
+            ResourceTestId.Parse("resource-test.summary.passed"),
+            ResourceTestStatus.Passed,
+            []),
+    ]);
+    var summary = ResourceTestRunSummary.FromResult(result);
+
+    AssertEqual(ResourceTestStatus.Passed, empty.Status);
+    AssertEqual(0, empty.TotalCases);
+    AssertEqual(0, empty.TotalDiagnostics);
+    AssertEqual(0, empty.ReproducibilityPackets);
+    AssertEqual(ResourceTestStatus.Failed, summary.Status);
+    AssertEqual(2, summary.TotalCases);
+    AssertEqual(1, summary.PassedCases);
+    AssertEqual(1, summary.FailedCases);
+    AssertEqual(3, summary.TotalDiagnostics);
+    AssertEqual(1, summary.ErrorDiagnostics);
+    AssertEqual(1, summary.WarningDiagnostics);
+    AssertEqual(1, summary.InfoDiagnostics);
+    AssertEqual(1, summary.ReproducibilityPackets);
 }
 
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
