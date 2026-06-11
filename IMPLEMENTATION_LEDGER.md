@@ -10,8 +10,8 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 24 - Resource-test diagnostic severity filtering (verified); later hardening/release work is next |
+| Last ledger update | 2026-06-11 |
+| Current implementation slice | Slice 25 - Resource-test human-readable text reports (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -86,6 +86,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-09 | Refine Slice 22 to standalone JSON and preliminary binary codecs for mosaic genome state. | Slice 22 implementation | Makes ID-based mosaic/chimeric runtime state portable as a separate resource while deferring genome-version embedding, regional geometry, overlapping expression, and full chimeric workflows. | Accepted |
 | 2026-06-09 | Refine Slice 23 to package-free Godot adapter import/export for standalone mosaic genome state. | Slice 23 implementation | Extends the existing Godot-facing DTO bridge to mosaic resources without adding GodotSharp resources, binary import/export, persistence policy, or richer mosaic behavior. | Accepted |
 | 2026-06-10 | Refine Slice 24 to resource-test diagnostic severity filtering. | Slice 24 implementation | Adds report-focused diagnostic filtering while preserving execution and pass/fail semantics; runtime-safe subsets, resource-pack loading, and broader reporting remain deferred. | Accepted |
+| 2026-06-11 | Refine Slice 25 to deterministic resource-test text report formatting. | Slice 25 implementation | Adds a human-readable report export over existing run results while relying on existing JSON result codecs for machine-readable reports; CLI, storage, editor integration, and resource-pack loading remain deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1455,6 +1456,55 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE.
 
+### Slice 25 - Resource-test human-readable text reports
+
+**Status:** Verified on 2026-06-11 for the refined Slice 25 acceptance criteria. CLI execution, editor integration, report persistence, and resource-pack loading remain **In progress**.
+
+**Objective:** Let callers export a deterministic human-readable report from a `ResourceTestRunResult` without changing test execution, result serialization, or storage boundaries.
+
+**Deliverables**
+
+- Add a text report formatter for resource-test run results.
+- Include aggregate run status, case counts, diagnostic counts by severity, and reproducibility packet count.
+- Include deterministic per-case report sections ordered by existing result ordering.
+- Include tags, diagnostics, and reproducibility packet references for each case.
+- Preserve the existing JSON result codec as the machine-readable report format.
+
+**Acceptance criteria**
+
+- Failed and passed case counts are summarized.
+- Error, warning, and info diagnostic counts are summarized.
+- Diagnostic details include severity, code, path, and message.
+- Cases with no diagnostics or packets explicitly report `none`.
+- Reproducibility packet report entries include operation path, seed, resource-set version, and failed assertion.
+- Case ordering is deterministic by resource-test ID.
+
+**Tests**
+
+- Resource-test text report summary over mixed passing/failing cases.
+- Diagnostic detail rendering for multiple severities.
+- Empty diagnostic and reproducibility packet section rendering.
+- Reproducibility packet reference rendering.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestTextReportFormatter.WriteToText`.
+- Aggregate report counts for cases, diagnostics, and reproducibility packets.
+- Per-case text sections with tags, diagnostics, and reproducibility packet references.
+
+**Implementation simplification choices**
+
+- Text reports are generated from already-materialized `ResourceTestRunResult` instances.
+- Machine-readable reporting continues to use `ResourceTestResultJsonCodec`; Slice 25 does not introduce another structured report envelope.
+- The formatter does not write files, choose output paths, run tests, or manage process exit codes.
+
+**Not yet implemented**
+
+- CLI/batch runner, editor integration, report persistence, custom report templates, resource-pack loading, changed-resource test selection, or machine-readable formats beyond the existing JSON result codec.
+
+**Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-VALIDATE.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1619,6 +1669,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - optional diagnostic severity threshold on resource-test run options
   - report-focused diagnostic filtering during result construction
   - pass/fail status preservation based on all generated diagnostics
+- Slice 25 resource-test human-readable text reports:
+  - deterministic text report formatter for run results
+  - aggregate case, diagnostic, and reproducibility packet counts
+  - per-case diagnostics and reproducibility packet references
 
 ### Not yet implemented
 
@@ -1629,7 +1683,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, and result persistence policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI/batch execution, editor integration, and result persistence policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -1655,6 +1709,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 19 serializes template groups with embedded templates and child groups only; external references, manifests, and compact binary schemas remain deferred.
 - Slice 20 extends only the package-free Godot document bridge; GodotSharp resources, editor tooling, binary resources, and persistence/export packaging remain deferred.
 - Slice 24 filters diagnostics only in reported resource-test results; execution, status calculation, reproducibility packets, and test selection remain unchanged.
+- Slice 25 formats only already-materialized resource-test results; test execution, machine-readable JSON reporting, storage, CLI exit codes, and editor integration remain unchanged.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1796,6 +1851,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - resource-test runner severity filtering for error, warning, and info diagnostics
   - failure status preservation when lower-priority diagnostics are filtered
   - existing tag-filtering regression coverage
+- Slice 25 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test text report summary counts for mixed pass/fail results
+  - rendered diagnostic details and explicit empty sections
+  - reproducibility packet reference rendering
+  - deterministic case ordering by resource-test id
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1825,13 +1885,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 22 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 23 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 24 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 25 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers and deterministic human-readable text reports. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, CLI/batch execution, and file layout do not exist yet.
 
 ### Test layers required by the project
 

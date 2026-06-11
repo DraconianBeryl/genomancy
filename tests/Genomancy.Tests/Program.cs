@@ -100,6 +100,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
     ("Resource test runner filters diagnostics by severity", ResourceTestRunnerFiltersDiagnosticsBySeverity),
+    ("Resource test text report summarizes run results", ResourceTestTextReportSummarizesRunResults),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -2110,6 +2111,56 @@ static void ResourceTestRunnerFiltersDiagnosticsBySeverity()
         warningsAndErrors.Cases.Single().Diagnostics.All(diagnostic => diagnostic.Severity <= ResourceTestSeverity.Warning),
         "Severity filter must retain only diagnostics at or above the selected severity.");
     AssertEqual(3, unfiltered.Cases.Single().Diagnostics.Count);
+}
+
+static void ResourceTestTextReportSummarizesRunResults()
+{
+    var result = new ResourceTestRunResult(
+    [
+        new ResourceTestCaseResult(
+            ResourceTestId.Parse("resource-test.report.passed"),
+            ResourceTestStatus.Passed,
+            [],
+            tags: ["smoke"]),
+        new ResourceTestCaseResult(
+            ResourceTestId.Parse("resource-test.report.failed"),
+            ResourceTestStatus.Failed,
+            [
+                new ResourceTestDiagnostic(ResourceTestSeverity.Warning, "REPORT_WARNING", "tests/report/warning", "Warning detail."),
+                new ResourceTestDiagnostic(ResourceTestSeverity.Error, "REPORT_ERROR", "tests/report/error", "Error detail."),
+            ],
+            tags: ["report", "slow"],
+            reproducibilityPackets:
+            [
+                new ReproducibilityPacket(
+                    TestVersion(),
+                    "resource-test.report.failed",
+                    123UL,
+                    "tests/report/frequency",
+                    "input fixture",
+                    "expected frequency",
+                    0.5,
+                    0.25,
+                    "frequency mismatch"),
+            ]),
+    ]);
+
+    var report = ResourceTestTextReportFormatter.WriteToText(result);
+
+    AssertTrue(report.Contains("Resource test run: Failed", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Cases: 2 total, 1 passed, 1 failed", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Diagnostics: 2 total, 1 error, 1 warning, 0 info", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("- resource-test.report.failed: Failed [tags: report, slow]", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("- Error REPORT_ERROR tests/report/error: Error detail.", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("- Warning REPORT_WARNING tests/report/warning: Warning detail.", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("tests/report/frequency seed=123 resourceSet=test.1 assertion=expected frequency", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("- resource-test.report.passed: Passed [tags: smoke]", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Diagnostics: none", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Reproducibility packets: none", StringComparison.Ordinal), report);
+    AssertTrue(
+        report.IndexOf("resource-test.report.failed", StringComparison.Ordinal)
+            < report.IndexOf("resource-test.report.passed", StringComparison.Ordinal),
+        "Report cases must remain deterministically sorted by resource-test id.");
 }
 
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
