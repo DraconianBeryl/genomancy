@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-08 |
-| Current implementation slice | Slice 23 - Godot adapter coverage for mosaic genome state (verified); later hardening/release work is next |
+| Current implementation slice | Slice 24 - Resource-test diagnostic severity filtering (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -85,6 +85,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-09 | Refine Slice 21 to a preliminary binary codec for runtime body-plan variants. | Slice 21 implementation | Closes the current runtime-variant binary round-trip gap using the shared JSON-wrapped binary envelope while deferring compact binary schemas and variant persistence in genome versions. | Accepted |
 | 2026-06-09 | Refine Slice 22 to standalone JSON and preliminary binary codecs for mosaic genome state. | Slice 22 implementation | Makes ID-based mosaic/chimeric runtime state portable as a separate resource while deferring genome-version embedding, regional geometry, overlapping expression, and full chimeric workflows. | Accepted |
 | 2026-06-09 | Refine Slice 23 to package-free Godot adapter import/export for standalone mosaic genome state. | Slice 23 implementation | Extends the existing Godot-facing DTO bridge to mosaic resources without adding GodotSharp resources, binary import/export, persistence policy, or richer mosaic behavior. | Accepted |
+| 2026-06-10 | Refine Slice 24 to resource-test diagnostic severity filtering. | Slice 24 implementation | Adds report-focused diagnostic filtering while preserving execution and pass/fail semantics; runtime-safe subsets, resource-pack loading, and broader reporting remain deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -840,7 +841,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, tags/severity filtering, runtime-safe subsets, fuzz/matrix execution, statistical assertions beyond the Slice 17 serialized population-template frequency assertion, validation reachability/policy coverage assertions, and integration with storage or Godot adapters.
+- JSON/binary resource-test codecs, resource-pack loading, fixture references, operation/assertion registries by serialized kind, snapshots, runtime-safe subsets, fuzz/matrix execution, statistical assertions beyond the Slice 17 serialized population-template frequency assertion, validation reachability/policy coverage assertions, and integration with storage or Godot adapters. Tag filtering arrives in Slice 13 and diagnostic severity filtering arrives in Slice 24.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
 
@@ -886,12 +887,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Serialized fixtures cover the current core authored definition kernel only: alleles, genes, groups, and body plans.
 - Serialized steps cover the Slice 12 built-in validation/freeze/assertion operations only.
 - JSON is the only resource-test serialization format in this slice; binary test codecs remain deferred.
-- Tag filtering is include/exclude only; severity filtering and runtime-safe subsets remain deferred.
+- Tag filtering is include/exclude only in Slice 13; Slice 24 adds diagnostic severity filtering while runtime-safe subsets remain deferred.
 - Resource-test results/failure packets are still in-memory only in Slice 13; Slice 18 adds result codecs while persistence remains deferred.
 
 **Not yet implemented**
 
-- Resource-pack loading, external fixture references, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 17 population-template frequency assertion, broader operation/assertion registries, reachability/policy coverage assertions, severity filtering, runtime-safe subset enforcement, result persistence, and integration with storage or Godot adapters.
+- Resource-pack loading, external fixture references, snapshots, fuzz/matrix execution, serialized/broader statistical assertions beyond the Slice 17 population-template frequency assertion, broader operation/assertion registries, reachability/policy coverage assertions, runtime-safe subset enforcement, result persistence, and integration with storage or Godot adapters.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
@@ -1406,6 +1407,54 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-GODOT, REQ-MOSAIC, REQ-SERIAL.
 
+### Slice 24 - Resource-test diagnostic severity filtering
+
+**Status:** Verified on 2026-06-10 for the refined Slice 24 acceptance criteria. Runtime-safe subsets, resource-pack loading, and richer report generation remain **In progress**.
+
+**Objective:** Let resource-test callers filter reported diagnostics by severity without changing which tests run or whether a case/run passes or fails.
+
+**Deliverables**
+
+- Extend `ResourceTestRunOptions` with an optional maximum diagnostic severity.
+- Filter diagnostics included in `ResourceTestCaseResult` when the option is set.
+- Keep tag include/exclude filtering behavior unchanged.
+- Preserve case/run pass-fail status based on all produced diagnostics, including diagnostics filtered out of the report.
+- Preserve deterministic diagnostic ordering through existing result construction.
+
+**Acceptance criteria**
+
+- Error-only filtering reports only error diagnostics.
+- Warning filtering reports warning and error diagnostics, but omits info diagnostics.
+- Unfiltered runs report all diagnostics.
+- A failed case remains failed even when lower-priority diagnostics are filtered out.
+- Existing tag filtering behavior remains compatible.
+
+**Tests**
+
+- Resource-test runner severity filtering with error, warning, and info diagnostics.
+- Failure status preservation under diagnostic filtering.
+- Existing tag-filtering regression coverage remains passing.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestRunOptions.MaximumDiagnosticSeverity`.
+- `ResourceTestRunOptions.FilterDiagnostics`.
+- Resource-test runner application of diagnostic filtering at result construction time.
+- Implementation-test helper for deterministic diagnostic emission.
+
+**Implementation simplification choices**
+
+- Severity filtering is report-focused and does not alter step execution, diagnostic generation, or pass/fail status calculation.
+- Reproducibility packets are not filtered by diagnostic severity.
+- The filter is a maximum enum threshold using current severity ordering: `Error`, then `Warning`, then `Info`.
+
+**Not yet implemented**
+
+- Runtime-safe resource-test subsets, serialized run-option resources, report rendering, severity-based test selection, resource-pack loading, snapshots, fuzz/matrix execution, or storage-backed result persistence.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1566,6 +1615,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - Godot-facing resource kind for standalone mosaic genome state
   - package-free import/export bridge methods for mosaic genome state
   - adapter metadata derived from the primary genome system-definition version
+- Slice 24 resource-test diagnostic severity filtering:
+  - optional diagnostic severity threshold on resource-test run options
+  - report-focused diagnostic filtering during result construction
+  - pass/fail status preservation based on all generated diagnostics
 
 ### Not yet implemented
 
@@ -1576,7 +1629,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, severity filtering, runtime-safe subset handling, and result persistence policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, and result persistence policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -1601,6 +1654,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 18 serializes resource-test result fields and embedded reproducibility packets only; result persistence, manifests, reporting metadata, and compact binary schemas are deferred.
 - Slice 19 serializes template groups with embedded templates and child groups only; external references, manifests, and compact binary schemas remain deferred.
 - Slice 20 extends only the package-free Godot document bridge; GodotSharp resources, editor tooling, binary resources, and persistence/export packaging remain deferred.
+- Slice 24 filters diagnostics only in reported resource-test results; execution, status calculation, reproducibility packets, and test selection remain unchanged.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1738,6 +1792,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - deterministic generated sample equality after JSON round trip
   - cross-template blend policy preservation
   - unknown envelope, incompatible system-version, and truncated binary rejection
+- Slice 24 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test runner severity filtering for error, warning, and info diagnostics
+  - failure status preservation when lower-priority diagnostics are filtered
+  - existing tag-filtering regression coverage
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1766,6 +1824,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 21 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 22 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 23 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 24 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 

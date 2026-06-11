@@ -99,6 +99,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test JSON round trip materializes executable definitions", ResourceTestJsonRoundTripMaterializesExecutableDefinitions),
     ("Resource test JSON rejects unsupported or malformed specs", ResourceTestJsonRejectsUnsupportedOrMalformedSpecs),
     ("Resource test runner filters by tags deterministically", ResourceTestRunnerFiltersByTagsDeterministically),
+    ("Resource test runner filters diagnostics by severity", ResourceTestRunnerFiltersDiagnosticsBySeverity),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -2080,6 +2081,37 @@ static void ResourceTestRunnerFiltersByTagsDeterministically()
     AssertEqual(ResourceTestId.Parse("resource-test.tags.fast"), result.Cases[0].TestId);
 }
 
+static void ResourceTestRunnerFiltersDiagnosticsBySeverity()
+{
+    var test = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.severity-filter"),
+        CreateMinimalHumanBuilder,
+        [
+            new EmitDiagnosticsStep(
+                new ResourceTestDiagnostic(ResourceTestSeverity.Info, "INFO_DIAGNOSTIC", "tests/severity/info", "Info diagnostic."),
+                new ResourceTestDiagnostic(ResourceTestSeverity.Warning, "WARNING_DIAGNOSTIC", "tests/severity/warning", "Warning diagnostic."),
+                new ResourceTestDiagnostic(ResourceTestSeverity.Error, "ERROR_DIAGNOSTIC", "tests/severity/error", "Error diagnostic.")),
+        ],
+        tags: ["severity"]);
+    var errorsOnly = ResourceTestRunner.Run(
+        [test],
+        new ResourceTestRunOptions(maximumDiagnosticSeverity: ResourceTestSeverity.Error));
+    var warningsAndErrors = ResourceTestRunner.Run(
+        [test],
+        new ResourceTestRunOptions(maximumDiagnosticSeverity: ResourceTestSeverity.Warning));
+    var unfiltered = ResourceTestRunner.Run([test]);
+
+    AssertEqual(ResourceTestStatus.Failed, errorsOnly.Status);
+    AssertEqual(ResourceTestStatus.Failed, errorsOnly.Cases.Single().Status);
+    AssertEqual(1, errorsOnly.Cases.Single().Diagnostics.Count);
+    AssertEqual("ERROR_DIAGNOSTIC", errorsOnly.Cases.Single().Diagnostics.Single().Code);
+    AssertEqual(2, warningsAndErrors.Cases.Single().Diagnostics.Count);
+    AssertTrue(
+        warningsAndErrors.Cases.Single().Diagnostics.All(diagnostic => diagnostic.Severity <= ResourceTestSeverity.Warning),
+        "Severity filter must retain only diagnostics at or above the selected severity.");
+    AssertEqual(3, unfiltered.Cases.Single().Diagnostics.Count);
+}
+
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
 {
     var template = CreatePopulationTemplate("template.binary", "template.binary.v1", lightWeight: 2, darkWeight: 3);
@@ -2904,5 +2936,22 @@ sealed class CountAllelesAndMutateStep(List<int> observedAlleleCounts) : IResour
     {
         observedAlleleCounts.Add(context.SystemDefinition.Alleles.Count);
         context.SystemDefinition.AddAllele(new AlleleDefinition(ResourceId.Parse($"allele.custom.{observedAlleleCounts.Count}")));
+    }
+}
+
+sealed class EmitDiagnosticsStep(params ResourceTestDiagnostic[] diagnostics) : IResourceTestStep
+{
+    public string Name => "emit-diagnostics";
+
+    public void Execute(ResourceTestContext context)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            context.AddDiagnostic(
+                diagnostic.Severity,
+                diagnostic.Code,
+                diagnostic.Path,
+                diagnostic.Message);
+        }
     }
 }

@@ -13,13 +13,13 @@ public static class ResourceTestRunner
         var results = definitions
             .Where(options.ShouldRun)
             .OrderBy(definition => definition.Id)
-            .Select(RunCase)
+            .Select(definition => RunCase(definition, options))
             .ToArray();
 
         return new ResourceTestRunResult(results);
     }
 
-    private static ResourceTestCaseResult RunCase(ResourceTestDefinition definition)
+    private static ResourceTestCaseResult RunCase(ResourceTestDefinition definition, ResourceTestRunOptions options)
     {
         var diagnostics = new List<ResourceTestDiagnostic>();
         ResourceTestContext? context = null;
@@ -63,7 +63,7 @@ public static class ResourceTestRunner
         return new ResourceTestCaseResult(
             definition.Id,
             status,
-            diagnostics,
+            options.FilterDiagnostics(diagnostics),
             definition.Tags,
             context?.ReproducibilityPackets);
     }
