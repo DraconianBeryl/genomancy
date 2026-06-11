@@ -15,7 +15,8 @@ Implemented optional boundaries:
   specifications, and resource-test results. It intentionally does not move
   genetics behavior into adapter types.
 - `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
-  atomic JSON-file persistence using caller-supplied core stream codecs.
+  atomic JSON-file persistence using caller-supplied core stream codecs, plus
+  typed factories for selected core resources such as resource-test results.
 
 The following boundaries are reserved for later slices:
 

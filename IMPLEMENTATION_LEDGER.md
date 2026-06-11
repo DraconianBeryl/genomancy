@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-11 |
-| Current implementation slice | Slice 25 - Resource-test human-readable text reports (verified); later hardening/release work is next |
+| Current implementation slice | Slice 26 - JSON-file storage for resource-test results (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -87,6 +87,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-09 | Refine Slice 23 to package-free Godot adapter import/export for standalone mosaic genome state. | Slice 23 implementation | Extends the existing Godot-facing DTO bridge to mosaic resources without adding GodotSharp resources, binary import/export, persistence policy, or richer mosaic behavior. | Accepted |
 | 2026-06-10 | Refine Slice 24 to resource-test diagnostic severity filtering. | Slice 24 implementation | Adds report-focused diagnostic filtering while preserving execution and pass/fail semantics; runtime-safe subsets, resource-pack loading, and broader reporting remain deferred. | Accepted |
 | 2026-06-11 | Refine Slice 25 to deterministic resource-test text report formatting. | Slice 25 implementation | Adds a human-readable report export over existing run results while relying on existing JSON result codecs for machine-readable reports; CLI, storage, editor integration, and resource-pack loading remain deferred. | Accepted |
+| 2026-06-11 | Refine Slice 26 to JSON-file storage for resource-test results. | Slice 26 implementation | Adds an optional storage-module factory for persisted resource-test run results using existing core codecs and atomic JSON-file storage; manifests, retention, naming policy, and resource-pack integration remain deferred. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1505,6 +1506,54 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-RANDOM, REQ-VALIDATE.
 
+### Slice 26 - JSON-file storage for resource-test results
+
+**Status:** Verified on 2026-06-11 for the refined Slice 26 acceptance criteria. Result manifests, retention policy, resource-pack integration, and CLI/editor output routing remain **In progress**.
+
+**Objective:** Let optional JSON-file storage callers persist and reload `ResourceTestRunResult` values through the existing core result JSON codec without giving `Genomancy.Core` filesystem ownership.
+
+**Deliverables**
+
+- Add a typed JSON-file storage factory for resource-test run results in `Genomancy.Storage.JsonFile`.
+- Reuse `ResourceTestResultJsonCodec` for the on-disk JSON payload.
+- Preserve diagnostics, tags, case status, and reproducibility packets across save/load.
+- Keep atomic file-write behavior centralized in the existing generic `JsonFileStore<T>`.
+- Keep core free of filesystem, path, and storage-provider dependencies.
+
+**Acceptance criteria**
+
+- A failed resource-test run result can be saved and loaded through the optional JSON-file storage module.
+- Loaded results retain failed status, diagnostics, and reproducibility packet seed data.
+- Canonical core result JSON is unchanged by the storage round trip.
+- The requested JSON file is created by the storage adapter.
+- No new storage dependency is added to `Genomancy.Core`.
+
+**Tests**
+
+- JSON-file resource-test result persistence with a statistical failure result.
+- Diagnostics preservation across the file boundary.
+- Reproducibility packet preservation across the file boundary.
+- Canonical JSON equality after save/load.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestResultJsonFileStore.Create`.
+- Typed composition of `JsonFileStore<ResourceTestRunResult>` with `ResourceTestResultJsonCodec`.
+- Architecture documentation for selected typed JSON-file storage factories.
+
+**Implementation simplification choices**
+
+- The typed factory does not define filenames, directories, manifests, retention rules, timestamps, or result history.
+- Persistence remains optional and outside core.
+- The file payload remains the existing deterministic resource-test result JSON envelope.
+
+**Not yet implemented**
+
+- Resource-pack result manifests, report/result retention policy, output path conventions, CLI/editor output routing, concurrent-writer coordination, or binary/SQLite result stores.
+
+**Requirements advanced:** REQ-RTEST, REQ-STORAGE, REQ-SERIAL, REQ-RANDOM.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1673,6 +1722,10 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - deterministic text report formatter for run results
   - aggregate case, diagnostic, and reproducibility packet counts
   - per-case diagnostics and reproducibility packet references
+- Slice 26 JSON-file storage for resource-test results:
+  - optional typed JSON-file store factory for resource-test run results
+  - result persistence through the existing deterministic result JSON codec
+  - preservation of diagnostics and reproducibility packets across file save/load
 
 ### Not yet implemented
 
@@ -1683,7 +1736,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI/batch execution, editor integration, and result persistence policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI/batch execution, editor integration, result manifests, and result retention/naming policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -1710,6 +1763,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 20 extends only the package-free Godot document bridge; GodotSharp resources, editor tooling, binary resources, and persistence/export packaging remain deferred.
 - Slice 24 filters diagnostics only in reported resource-test results; execution, status calculation, reproducibility packets, and test selection remain unchanged.
 - Slice 25 formats only already-materialized resource-test results; test execution, machine-readable JSON reporting, storage, CLI exit codes, and editor integration remain unchanged.
+- Slice 26 stores resource-test results only through a typed factory over the generic JSON-file store; it does not define project file layout, retention, manifests, or output routing.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1856,6 +1910,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - rendered diagnostic details and explicit empty sections
   - reproducibility packet reference rendering
   - deterministic case ordering by resource-test id
+- Slice 26 package-free implementation tests in `tests/Genomancy.Tests`:
+  - JSON-file storage round trip for failed resource-test run results
+  - diagnostic preservation across save/load
+  - reproducibility packet preservation across save/load
+  - canonical result JSON equality after storage round trip
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1886,13 +1945,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 23 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 24 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 25 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 26 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers and deterministic human-readable text reports. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result persistence policy, CLI/batch execution, and file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, and optional JSON files through `Genomancy.Storage.JsonFile`. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result retention policy, CLI/batch execution, and file layout do not exist yet.
 
 ### Test layers required by the project
 

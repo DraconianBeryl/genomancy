@@ -105,6 +105,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
+    ("JSON file storage persists resource test results outside core", JsonFileStoragePersistsResourceTestResultsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -2258,6 +2259,54 @@ static void JsonFileStoragePersistsResourceTestSpecsOutsideCore()
 
         AssertEqual(ResourceTestJsonCodec.WriteToText(specs), ResourceTestJsonCodec.WriteToText(loaded));
         AssertEqual(ResourceTestStatus.Passed, result.Status);
+    }
+    finally
+    {
+        var root = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void JsonFileStoragePersistsResourceTestResultsOutsideCore()
+{
+    var path = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}",
+        "resource-test-result.json");
+    var template = CreatePopulationTemplate("template.result-storage", "template.result-storage.v1", 1, 1);
+    var failing = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.result-storage.failure"),
+        CreateMinimalHumanBuilder,
+        [
+            new AssertPopulationTemplateFrequencyStep(
+                template,
+                Id("group.common"),
+                Id("gene.skin"),
+                Id("allele.skin.light"),
+                sampleCount: 100,
+                seed: 77,
+                new StatisticalTolerance(expectedProportion: 1, absoluteTolerance: 0)),
+        ],
+        tags: ["storage", "result"]);
+    var result = ResourceTestRunner.Run([failing]);
+    var store = ResourceTestResultJsonFileStore.Create();
+
+    try
+    {
+        store.Save(path, result);
+        var loaded = store.Load(path);
+        var failure = loaded.Cases.Single();
+
+        AssertEqual(ResourceTestStatus.Failed, loaded.Status);
+        AssertEqual(ResourceTestResultJsonCodec.WriteToText(result), ResourceTestResultJsonCodec.WriteToText(loaded));
+        AssertEqual("RESOURCE_TEST_STATISTICAL_TOLERANCE_FAILED", failure.Diagnostics.Single().Code);
+        AssertEqual(77UL, failure.ReproducibilityPackets.Single().Seed);
+        AssertTrue(File.Exists(path), "Result store must create the requested JSON file.");
     }
     finally
     {
