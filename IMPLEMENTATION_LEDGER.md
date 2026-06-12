@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-12 |
-| Current implementation slice | Slice 29 - Godot bridge for resource-test result manifests (verified); later hardening/release work is next |
+| Current implementation slice | Slice 30 - Resource-test batch runs with manifest generation (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -91,6 +91,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-11 | Refine Slice 27 to derived resource-test run summaries. | Slice 27 implementation | Adds a reusable deterministic summary surface for result status/counts to support reports, future manifests, and future CLI status without implementing manifests, CLI output, or persistence policy. | Accepted |
 | 2026-06-12 | Refine Slice 28 to resource-test result manifests. | Slice 28 implementation | Adds deterministic manifest entries with stored-result paths and embedded summaries to support future batch/CLI indexes without defining execution, retention, or project file layout policy. | Accepted |
 | 2026-06-12 | Refine Slice 29 to package-free Godot adapter import/export for resource-test result manifests. | Slice 29 implementation | Extends the Godot-facing DTO bridge to Slice 28 manifests without adding GodotSharp resources, editor plugins, binary import/export, CLI integration, or result retention policy. | Accepted |
+| 2026-06-12 | Refine Slice 30 to resource-test batch runs with manifest generation. | Slice 30 implementation | Adds core batch-run orchestration over existing resource-test definitions/options/results and produces a deterministic manifest without introducing CLI commands, filesystem layout, retention, or storage writes. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1708,6 +1709,62 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-GODOT, REQ-RTEST, REQ-SERIAL.
 
+### Slice 30 - Resource-test batch runs with manifest generation
+
+**Status:** Verified on 2026-06-12 for the refined Slice 30 acceptance criteria. CLI commands, filesystem output layout, result persistence, manifest merge/update policy, and retention policy remain **In progress**.
+
+**Objective:** Add a core batch-run orchestration surface that can execute multiple named resource-test runs and produce a deterministic manifest from their results, giving future CLI/editor tooling a shared engine-neutral primitive.
+
+**Deliverables**
+
+- Add immutable batch run requests with run ID, caller-supplied result path, definitions, per-run options, optional label, optional completion timestamp, and caller tags.
+- Add immutable batch run records containing the run result and generated manifest entry.
+- Add immutable batch run results containing all run records, aggregate status, and generated result manifest.
+- Add a deterministic batch runner that orders runs by run ID/result path, applies each request's `ResourceTestRunOptions`, executes through the existing `ResourceTestRunner`, and builds manifest entries from the results.
+- Reject duplicate batch run IDs before execution.
+- Merge caller tags with executed case tags for each generated manifest entry.
+- Keep result paths opaque and do not write files.
+
+**Acceptance criteria**
+
+- Multiple named batch runs execute deterministically and expose their individual `ResourceTestRunResult` values.
+- Aggregate batch status is failed when any contained run fails and passed otherwise.
+- Generated manifests preserve run IDs, caller result paths, labels/timestamps, derived summaries, and merged sorted tags.
+- Per-run tag filters affect which cases execute and which case tags appear in the generated manifest.
+- Duplicate run IDs are rejected.
+- No filesystem writes, CLI behavior, or storage policy is introduced in core.
+
+**Tests**
+
+- Batch execution over passing and failing named runs with deterministic run ordering and manifest generation.
+- Aggregate failed batch status when a contained run fails.
+- Manifest entry summary and tag generation from batch results.
+- Per-run include-tag option filtering.
+- Duplicate batch run-ID rejection.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestBatchRunRequest`.
+- `ResourceTestBatchRunRecord`.
+- `ResourceTestBatchRunResult`.
+- `ResourceTestBatchRunner`.
+- Package-free implementation tests for batch execution, manifest generation, per-run options, and duplicate run-ID validation.
+
+**Implementation simplification choices**
+
+- Batch run requests carry caller-supplied result paths but do not write result files.
+- Completion timestamps are optional caller inputs; the batch runner does not read the clock or measure durations.
+- Batch execution is sequential and deterministic.
+- The batch runner consumes in-memory `ResourceTestDefinition` instances only; it does not load serialized specs or resource packs.
+- Manifest generation embeds summaries only and does not persist or merge manifests.
+
+**Not yet implemented**
+
+- CLI/batch command-line host, serialized batch-run plan codec, resource-pack loading, filesystem output layout, result-file writes, manifest merge/update workflows, retention/naming policy, duration metrics, parallel execution, or editor integration.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1894,6 +1951,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - package-free import/export bridge methods for result manifests
   - adapter metadata for manifest entry tags
   - package lookup coverage through the existing document/package model
+- Slice 30 resource-test batch runs:
+  - immutable batch run requests, records, and aggregate results
+  - deterministic sequential batch execution through the existing resource-test runner
+  - per-run resource-test options
+  - generated result manifests from batch run outputs
+  - duplicate run-ID rejection
 
 ### Not yet implemented
 
@@ -1904,7 +1967,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI/batch execution, editor integration, manifest merge/update workflows, result file layout, and result retention/naming policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, manifest merge/update workflows, result file layout, result writes, and result retention/naming policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, manifest/result file dereferencing, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -1935,6 +1998,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 27 summarizes already-materialized resource-test results only; it does not serialize manifests, define CLI status output, track durations, or add storage catalogs.
 - Slice 28 serializes caller-authored result manifests with opaque result paths and embedded summaries only; it does not define CLI/batch execution, retention, manifest merge/update policy, duration metrics, or project layout.
 - Slice 29 exposes result manifests through the package-free Godot document bridge only; it does not add GodotSharp resources, editor tooling, binary import/export, result dereferencing, or manifest storage/update policy.
+- Slice 30 runs in-memory resource-test definitions in deterministic sequential batches only; it does not load serialized specs, write result files, define CLI commands, merge manifests, measure durations, or run in parallel.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -2102,6 +2166,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - manifest document metadata verification for empty system-definition version and sorted tags
   - Godot resource package lookup for manifest documents
   - Godot adapter kind-mismatch diagnostic for manifest documents
+- Slice 30 package-free implementation tests in `tests/Genomancy.Tests`:
+  - resource-test batch runner executes multiple named runs and builds a manifest
+  - aggregate batch status reflects failed contained runs
+  - generated manifest entries include derived summaries and merged sorted tags
+  - per-run include-tag options filter executed cases and manifest tags
+  - duplicate batch run-ID rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -2136,13 +2206,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 27 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 28 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 29 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 30 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, and serialized result manifests with opaque stored-result paths. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI/batch execution, and project file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, and deterministic in-memory batch-run outputs with generated manifests. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI host/commands, result file writes, and project file layout do not exist yet.
 
 ### Test layers required by the project
 

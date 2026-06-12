@@ -104,6 +104,8 @@ var tests = new (string Name, Action Test)[]
     ("Resource test run summary counts statuses diagnostics and packets", ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets),
     ("Resource test result manifest summarizes and orders entries", ResourceTestResultManifestSummarizesAndOrdersEntries),
     ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
+    ("Resource test batch runner executes runs and builds manifest", ResourceTestBatchRunnerExecutesRunsAndBuildsManifest),
+    ("Resource test batch runner respects options and rejects duplicate run ids", ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -2299,6 +2301,94 @@ static void ResourceTestResultManifestJsonRoundTripsAndValidates()
             """
             {"envelopeVersion":1,"entries":[{"runId":"run.bad","resultPath":"results/bad.json","completedAtUtc":"not a date","summary":{"status":"Passed","totalCases":0,"passedCases":0,"failedCases":0,"totalDiagnostics":0,"errorDiagnostics":0,"warningDiagnostics":0,"infoDiagnostics":0,"reproducibilityPackets":0}}]}
             """u8));
+}
+
+static void ResourceTestBatchRunnerExecutesRunsAndBuildsManifest()
+{
+    var passing = CreateResourceTestSpecification(
+        "resource-test.batch.passing",
+        invalidGene: false,
+        tags: ["fast", "baseline"]).ToDefinition();
+    var failing = new ResourceTestDefinition(
+        ResourceTestId.Parse("resource-test.batch.failing"),
+        CreateMinimalHumanBuilder,
+        [
+            new EmitDiagnosticsStep(new ResourceTestDiagnostic(
+                ResourceTestSeverity.Error,
+                "BATCH_FAILURE",
+                "tests/batch/failure",
+                "Batch failure.")),
+        ],
+        tags: ["negative"]);
+    var batch = ResourceTestBatchRunner.Run(
+    [
+        new ResourceTestBatchRunRequest(
+            ResourceTestId.Parse("run.batch.z"),
+            "results/z.json",
+            [passing],
+            completedAtUtc: new DateTimeOffset(2026, 06, 12, 18, 00, 00, TimeSpan.Zero),
+            label: "Z run",
+            tags: ["batch"]),
+        new ResourceTestBatchRunRequest(
+            ResourceTestId.Parse("run.batch.a"),
+            "results/a.json",
+            [failing],
+            completedAtUtc: new DateTimeOffset(2026, 06, 12, 17, 00, 00, TimeSpan.Zero),
+            label: "A run",
+            tags: ["batch", "negative"]),
+    ]);
+
+    AssertEqual(ResourceTestStatus.Failed, batch.Status);
+    AssertEqual(2, batch.Runs.Count);
+    AssertEqual("run.batch.a", batch.Runs[0].RunId.Value);
+    AssertEqual(ResourceTestStatus.Failed, batch.Runs[0].Result.Status);
+    AssertEqual(ResourceTestStatus.Failed, batch.Runs[0].ManifestEntry.Summary.Status);
+    AssertEqual("run.batch.z", batch.Runs[1].RunId.Value);
+    AssertEqual(ResourceTestStatus.Passed, batch.Runs[1].Result.Status);
+    AssertEqual(2, batch.Manifest.Entries.Count);
+    AssertEqual("results/a.json", batch.Manifest.Entries[0].ResultPath);
+    AssertTrue(
+        batch.Manifest.Entries[0].Tags.SequenceEqual(["batch", "negative"]),
+        "Batch manifest entry must include request and case tags.");
+    AssertTrue(
+        batch.Manifest.Entries[1].Tags.SequenceEqual(["baseline", "batch", "fast"]),
+        "Batch manifest entry must include sorted request and case tags.");
+    AssertEqual(
+        ResourceTestResultManifestJsonCodec.WriteToText(batch.Manifest),
+        ResourceTestResultManifestJsonCodec.WriteToText(new ResourceTestResultManifest(batch.Runs.Select(run => run.ManifestEntry))));
+}
+
+static void ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds()
+{
+    var fast = CreateResourceTestSpecification(
+        "resource-test.batch-options.fast",
+        invalidGene: false,
+        tags: ["fast"]).ToDefinition();
+    var slow = CreateResourceTestSpecification(
+        "resource-test.batch-options.slow",
+        invalidGene: false,
+        tags: ["slow"]).ToDefinition();
+    var batch = ResourceTestBatchRunner.Run(
+    [
+        new ResourceTestBatchRunRequest(
+            ResourceTestId.Parse("run.batch-options.fast-only"),
+            "results/fast-only.json",
+            [slow, fast],
+            new ResourceTestRunOptions(includeTags: ["fast"]),
+            tags: ["options"]),
+    ]);
+
+    AssertEqual(ResourceTestStatus.Passed, batch.Status);
+    AssertEqual(1, batch.Runs.Single().Result.Cases.Count);
+    AssertEqual("resource-test.batch-options.fast", batch.Runs.Single().Result.Cases.Single().TestId.Value);
+    AssertTrue(
+        batch.Manifest.Entries.Single().Tags.SequenceEqual(["fast", "options"]),
+        "Batch manifest tags must reflect the filtered run result.");
+    AssertThrows<ArgumentException>(() => ResourceTestBatchRunner.Run(
+    [
+        new ResourceTestBatchRunRequest(ResourceTestId.Parse("run.duplicate"), "results/one.json", [fast]),
+        new ResourceTestBatchRunRequest(ResourceTestId.Parse("run.duplicate"), "results/two.json", [slow]),
+    ]));
 }
 
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
