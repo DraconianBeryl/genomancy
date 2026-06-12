@@ -12,8 +12,8 @@ Implemented optional boundaries:
   Godot-facing resource documents, resource packages, import/export bridges, and
   runtime startup diagnostics. It currently bridges genomes, mosaic genomes,
   population templates, population template groups, resource-test
-  specifications, and resource-test results. It intentionally does not move
-  genetics behavior into adapter types.
+  specifications, resource-test results, and resource-test result manifests.
+  It intentionally does not move genetics behavior into adapter types.
 - `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
   atomic JSON-file persistence using caller-supplied core stream codecs, plus
   typed factories for selected core resources such as resource-test results.

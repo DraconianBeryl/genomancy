@@ -168,6 +168,35 @@ public static class GodotResourceBridge
             () => ResourceTestResultJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
     }
 
+    public static GodotResourceDocument ExportResourceTestResultManifest(
+        GodotResourcePath path,
+        ResourceTestResultManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        var tags = manifest.Entries
+            .SelectMany(entry => entry.Tags)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.ResourceTestResultManifest,
+            ResourceTestResultManifestJsonCodec.WriteToText(manifest),
+            string.Empty,
+            tags);
+    }
+
+    public static GodotAdapterResult<ResourceTestResultManifest> ImportResourceTestResultManifest(
+        GodotResourceDocument document)
+    {
+        return Import(
+            document,
+            GodotResourceKind.ResourceTestResultManifest,
+            () => ResourceTestResultManifestJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
+    }
+
     private static GodotAdapterResult<T> Import<T>(
         GodotResourceDocument document,
         string expectedKind,
@@ -202,4 +231,5 @@ public static class GodotResourceBridge
                 exception.Message));
         }
     }
+
 }

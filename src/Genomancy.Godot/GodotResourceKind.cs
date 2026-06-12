@@ -13,4 +13,6 @@ public static class GodotResourceKind
     public const string ResourceTests = "genomancy.resourceTests";
 
     public const string ResourceTestResult = "genomancy.resourceTestResult";
+
+    public const string ResourceTestResultManifest = "genomancy.resourceTestResultManifest";
 }

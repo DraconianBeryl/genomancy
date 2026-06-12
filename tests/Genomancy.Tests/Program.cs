@@ -113,6 +113,7 @@ var tests = new (string Name, Action Test)[]
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
+    ("Godot adapter round trips result manifest documents", GodotAdapterRoundTripsResultManifestDocuments),
     ("Godot adapter round trips mosaic genome documents", GodotAdapterRoundTripsMosaicGenomeDocuments),
     ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
@@ -2599,6 +2600,53 @@ static void GodotAdapterRoundTripsTemplateGroupAndResultDocuments()
     AssertTrue(
         !GodotResourceBridge.ImportPopulationTemplateGroup(resultDocument, TestVersion()).IsSuccess,
         "Importing a result as a template group must report a kind mismatch.");
+}
+
+static void GodotAdapterRoundTripsResultManifestDocuments()
+{
+    var failed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.godot-manifest.failed"),
+        ResourceTestStatus.Failed,
+        diagnostics:
+        [
+            new ResourceTestDiagnostic(ResourceTestSeverity.Error, "GODOT_MANIFEST_ERROR", "tests/godot-manifest/error", "Error detail."),
+        ]);
+    var passed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.godot-manifest.passed"),
+        ResourceTestStatus.Passed);
+    var manifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.godot-manifest.failed"),
+            "user://genomancy/results/failed.json",
+            failed,
+            new DateTimeOffset(2026, 06, 12, 12, 00, 00, TimeSpan.Zero),
+            tags: ["manifest", "godot"]),
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.godot-manifest.passed"),
+            "user://genomancy/results/passed.json",
+            passed,
+            tags: ["godot", "smoke"]),
+    ]);
+    var document = GodotResourceBridge.ExportResourceTestResultManifest(
+        GodotResourcePath.Parse("user://genomancy/resource-test-result-manifest.godot.json"),
+        manifest);
+    var imported = GodotResourceBridge.ImportResourceTestResultManifest(document);
+    var package = new GodotResourcePackage("genomancy.godot-manifest-package", [document]);
+
+    AssertEqual(GodotResourceKind.ResourceTestResultManifest, document.Kind);
+    AssertEqual(string.Empty, document.SystemDefinitionVersion);
+    AssertTrue(
+        document.Tags.SequenceEqual(["godot", "manifest", "smoke"]),
+        "Manifest document tags must be sorted and de-duplicated.");
+    AssertTrue(imported.IsSuccess, GodotDiagnosticsToString(imported.Diagnostics));
+    AssertEqual(
+        ResourceTestResultManifestJsonCodec.WriteToText(manifest),
+        ResourceTestResultManifestJsonCodec.WriteToText(imported.Value ?? throw new InvalidOperationException("Manifest import failed.")));
+    AssertEqual(document, package.Get(GodotResourcePath.Parse("user://genomancy/resource-test-result-manifest.godot.json")));
+    AssertTrue(
+        !GodotResourceBridge.ImportResourceTestResult(document).IsSuccess,
+        "Importing a manifest as a result must report a kind mismatch.");
 }
 
 static void GodotAdapterRoundTripsMosaicGenomeDocuments()

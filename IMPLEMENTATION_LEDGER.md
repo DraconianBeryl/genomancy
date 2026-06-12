@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-12 |
-| Current implementation slice | Slice 28 - Resource-test result manifests (verified); later hardening/release work is next |
+| Current implementation slice | Slice 29 - Godot bridge for resource-test result manifests (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -90,6 +90,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-11 | Refine Slice 26 to JSON-file storage for resource-test results. | Slice 26 implementation | Adds an optional storage-module factory for persisted resource-test run results using existing core codecs and atomic JSON-file storage; manifests, retention, naming policy, and resource-pack integration remain deferred. | Accepted |
 | 2026-06-11 | Refine Slice 27 to derived resource-test run summaries. | Slice 27 implementation | Adds a reusable deterministic summary surface for result status/counts to support reports, future manifests, and future CLI status without implementing manifests, CLI output, or persistence policy. | Accepted |
 | 2026-06-12 | Refine Slice 28 to resource-test result manifests. | Slice 28 implementation | Adds deterministic manifest entries with stored-result paths and embedded summaries to support future batch/CLI indexes without defining execution, retention, or project file layout policy. | Accepted |
+| 2026-06-12 | Refine Slice 29 to package-free Godot adapter import/export for resource-test result manifests. | Slice 29 implementation | Extends the Godot-facing DTO bridge to Slice 28 manifests without adding GodotSharp resources, editor plugins, binary import/export, CLI integration, or result retention policy. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1655,6 +1656,58 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-STORAGE, REQ-SERIAL, REQ-RANDOM.
 
+### Slice 29 - Godot bridge for resource-test result manifests
+
+**Status:** Verified on 2026-06-12 for the refined Slice 29 acceptance criteria. GodotSharp resources, editor integration, binary import/export, project file layout, manifest merge/update policy, and retention policy remain **In progress**.
+
+**Objective:** Expose Slice 28 resource-test result manifests through the existing package-free Godot adapter document bridge so Godot-facing callers can import/export manifest JSON without duplicating core serialization logic.
+
+**Deliverables**
+
+- Add a Godot resource kind for resource-test result manifests.
+- Add package-free `GodotResourceBridge` export/import methods for `ResourceTestResultManifest`.
+- Preserve manifest JSON by delegating to the core manifest codec.
+- Derive Godot document tags from manifest entry tags in deterministic sorted order.
+- Leave `SystemDefinitionVersion` metadata empty because manifest entries currently embed summaries and opaque result paths, not result payloads or packet-level system versions.
+- Support ordinary `GodotResourcePackage` lookup for manifest documents through the existing document model.
+
+**Acceptance criteria**
+
+- Exported manifest documents use the manifest resource kind and canonical core manifest JSON payload.
+- Imported manifest documents round trip to the same canonical core manifest JSON.
+- Manifest document tags are de-duplicated and sorted.
+- Manifest document system-definition metadata is empty by design.
+- Importing a manifest document through a different resource-kind importer reports a kind-mismatch diagnostic.
+- Existing Godot adapter document/package behavior remains compatible.
+
+**Tests**
+
+- Godot adapter manifest document export/import round trip.
+- Manifest document tag metadata sorting/de-duplication.
+- Manifest document package lookup.
+- Manifest-as-result kind-mismatch diagnostic.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `GodotResourceKind.ResourceTestResultManifest`.
+- `GodotResourceBridge.ExportResourceTestResultManifest`.
+- `GodotResourceBridge.ImportResourceTestResultManifest`.
+- Package-free implementation tests for manifest document bridge behavior.
+
+**Implementation simplification choices**
+
+- Manifest bridge support remains DTO/document-only and does not introduce GodotSharp `Resource` classes.
+- The bridge does not dereference manifest result paths or inspect linked result files.
+- The bridge does not infer system-definition versions from manifests because Slice 28 manifests do not contain packet/result payloads.
+- Binary Godot import/export and editor/runtime plugin integration remain deferred.
+
+**Not yet implemented**
+
+- GodotSharp manifest resources, editor inspectors/importers/exporters, resource-pack manifest loading, binary manifest resources, result-file dereferencing, retention/naming policy, manifest merge/update workflows, CLI/batch execution, or project file layout.
+
+**Requirements advanced:** REQ-GODOT, REQ-RTEST, REQ-SERIAL.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -1836,6 +1889,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - deterministic result manifest JSON codec over streams, buffers, and text
   - embedded derived run summaries for stored result artifacts
   - optional typed JSON-file store factory for resource-test result manifests
+- Slice 29 Godot bridge for resource-test result manifests:
+  - Godot-facing resource kind for resource-test result manifests
+  - package-free import/export bridge methods for result manifests
+  - adapter metadata for manifest entry tags
+  - package lookup coverage through the existing document/package model
 
 ### Not yet implemented
 
@@ -1848,7 +1906,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
 - Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI/batch execution, editor integration, manifest merge/update workflows, result file layout, and result retention/naming policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
-- GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, persistence policy, and Godot engine-version matrices.
+- GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, manifest/result file dereferencing, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
 
 ### Recorded simplifications
@@ -1876,6 +1934,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 26 stores resource-test results only through a typed factory over the generic JSON-file store; it does not define project file layout, retention, manifests, or output routing.
 - Slice 27 summarizes already-materialized resource-test results only; it does not serialize manifests, define CLI status output, track durations, or add storage catalogs.
 - Slice 28 serializes caller-authored result manifests with opaque result paths and embedded summaries only; it does not define CLI/batch execution, retention, manifest merge/update policy, duration metrics, or project layout.
+- Slice 29 exposes result manifests through the package-free Godot document bridge only; it does not add GodotSharp resources, editor tooling, binary import/export, result dereferencing, or manifest storage/update policy.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -2038,6 +2097,11 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - manifest tag normalization, UTC timestamp normalization, and duplicate run-ID rejection
   - manifest JSON round trip and unsupported/invalid JSON rejection
   - JSON-file storage round trip for resource-test result manifests
+- Slice 29 package-free implementation tests in `tests/Genomancy.Tests`:
+  - Godot adapter resource-test result manifest document round trip
+  - manifest document metadata verification for empty system-definition version and sorted tags
+  - Godot resource package lookup for manifest documents
+  - Godot adapter kind-mismatch diagnostic for manifest documents
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -2071,13 +2135,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 26 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 27 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 28 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 29 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, and serialized result manifests with opaque stored-result paths. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, and resource-test-result JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI/batch execution, and project file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, and serialized result manifests with opaque stored-result paths. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI/batch execution, and project file layout do not exist yet.
 
 ### Test layers required by the project
 
