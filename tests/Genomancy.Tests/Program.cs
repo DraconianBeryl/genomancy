@@ -102,11 +102,14 @@ var tests = new (string Name, Action Test)[]
     ("Resource test runner filters diagnostics by severity", ResourceTestRunnerFiltersDiagnosticsBySeverity),
     ("Resource test text report summarizes run results", ResourceTestTextReportSummarizesRunResults),
     ("Resource test run summary counts statuses diagnostics and packets", ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets),
+    ("Resource test result manifest summarizes and orders entries", ResourceTestResultManifestSummarizesAndOrdersEntries),
+    ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
     ("JSON file storage persists resource test results outside core", JsonFileStoragePersistsResourceTestResultsOutsideCore),
+    ("JSON file storage persists resource test result manifests outside core", JsonFileStoragePersistsResourceTestResultManifestsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -2213,6 +2216,90 @@ static void ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets()
     AssertEqual(1, summary.ReproducibilityPackets);
 }
 
+static void ResourceTestResultManifestSummarizesAndOrdersEntries()
+{
+    var failed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest.failed"),
+        ResourceTestStatus.Failed,
+        diagnostics:
+        [
+            new ResourceTestDiagnostic(ResourceTestSeverity.Error, "MANIFEST_ERROR", "tests/manifest/error", "Error detail."),
+        ]);
+    var passed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest.passed"),
+        ResourceTestStatus.Passed);
+    var manifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.z"),
+            "results/z.json",
+            passed,
+            new DateTimeOffset(2026, 06, 11, 14, 30, 00, TimeSpan.FromHours(-5)),
+            label: "Z run",
+            tags: ["slow", "slow", "baseline"]),
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.a"),
+            "results/a.json",
+            failed,
+            new DateTimeOffset(2026, 06, 11, 19, 30, 00, TimeSpan.Zero)),
+    ]);
+
+    AssertEqual("run.a", manifest.Entries[0].RunId.Value);
+    AssertEqual(ResourceTestStatus.Failed, manifest.Entries[0].Summary.Status);
+    AssertEqual(1, manifest.Entries[0].Summary.TotalCases);
+    AssertEqual(1, manifest.Entries[0].Summary.FailedCases);
+    AssertEqual(1, manifest.Entries[0].Summary.ErrorDiagnostics);
+    AssertEqual("run.z", manifest.Entries[1].RunId.Value);
+    AssertEqual("baseline", manifest.Entries[1].Tags[0]);
+    AssertEqual("slow", manifest.Entries[1].Tags[1]);
+    AssertEqual(TimeSpan.Zero, manifest.Entries[1].CompletedAtUtc?.Offset);
+    AssertEqual(19, manifest.Entries[1].CompletedAtUtc?.Hour);
+    AssertThrows<ArgumentException>(() => new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(ResourceTestId.Parse("run.dup"), "results/1.json", passed),
+        ResourceTestResultManifestEntry.FromResult(ResourceTestId.Parse("run.dup"), "results/2.json", failed),
+    ]));
+}
+
+static void ResourceTestResultManifestJsonRoundTripsAndValidates()
+{
+    var result = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest.codec"),
+        ResourceTestStatus.Failed,
+        diagnostics:
+        [
+            new ResourceTestDiagnostic(ResourceTestSeverity.Warning, "MANIFEST_WARNING", "tests/manifest/warning", "Warning detail."),
+        ]);
+    var manifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.codec"),
+            "results/codec.json",
+            result,
+            new DateTimeOffset(2026, 06, 11, 20, 00, 00, TimeSpan.Zero),
+            label: "Codec run",
+            tags: ["codec"]),
+    ]);
+    var text = ResourceTestResultManifestJsonCodec.WriteToText(manifest);
+    var roundTrip = ResourceTestResultManifestJsonCodec.ReadFromBuffer(
+        ResourceTestResultManifestJsonCodec.WriteToBuffer(manifest));
+
+    AssertEqual(text, ResourceTestResultManifestJsonCodec.WriteToText(roundTrip));
+    AssertEqual("run.codec", roundTrip.Entries.Single().RunId.Value);
+    AssertEqual("results/codec.json", roundTrip.Entries.Single().ResultPath);
+    AssertEqual(ResourceTestStatus.Failed, roundTrip.Entries.Single().Summary.Status);
+    AssertTrue(
+        text.Contains("\"completedAtUtc\":\"2026-06-11T20:00:00.0000000\\u002B00:00\"", StringComparison.Ordinal),
+        text);
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestResultManifestJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"entries":[]}"""u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestResultManifestJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"entries":[{"runId":"run.bad","resultPath":"results/bad.json","completedAtUtc":"not a date","summary":{"status":"Passed","totalCases":0,"passedCases":0,"failedCases":0,"totalDiagnostics":0,"errorDiagnostics":0,"warningDiagnostics":0,"infoDiagnostics":0,"reproducibilityPackets":0}}]}
+            """u8));
+}
+
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
 {
     var template = CreatePopulationTemplate("template.binary", "template.binary.v1", lightWeight: 2, darkWeight: 3);
@@ -2356,6 +2443,57 @@ static void JsonFileStoragePersistsResourceTestResultsOutsideCore()
         AssertEqual("RESOURCE_TEST_STATISTICAL_TOLERANCE_FAILED", failure.Diagnostics.Single().Code);
         AssertEqual(77UL, failure.ReproducibilityPackets.Single().Seed);
         AssertTrue(File.Exists(path), "Result store must create the requested JSON file.");
+    }
+    finally
+    {
+        var root = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void JsonFileStoragePersistsResourceTestResultManifestsOutsideCore()
+{
+    var path = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}",
+        "resource-test-result-manifest.json");
+    var result = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest-storage.failure"),
+        ResourceTestStatus.Failed,
+        diagnostics:
+        [
+            new ResourceTestDiagnostic(ResourceTestSeverity.Error, "MANIFEST_STORAGE_ERROR", "tests/manifest-storage/error", "Error detail."),
+        ]);
+    var manifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-storage"),
+            "results/resource-test-result.json",
+            result,
+            new DateTimeOffset(2026, 06, 11, 21, 00, 00, TimeSpan.Zero),
+            label: "Stored manifest run",
+            tags: ["storage", "manifest"]),
+    ]);
+    var store = ResourceTestResultManifestJsonFileStore.Create();
+
+    try
+    {
+        store.Save(path, manifest);
+        var loaded = store.Load(path);
+        var entry = loaded.Entries.Single();
+
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(manifest),
+            ResourceTestResultManifestJsonCodec.WriteToText(loaded));
+        AssertEqual(ResourceTestStatus.Failed, entry.Summary.Status);
+        AssertEqual(1, entry.Summary.ErrorDiagnostics);
+        AssertEqual("results/resource-test-result.json", entry.ResultPath);
+        AssertTrue(File.Exists(path), "Result manifest store must create the requested JSON file.");
     }
     finally
     {
@@ -2988,6 +3126,21 @@ static void AssertGenomeVersionsEqual(GenomeVersion expected, GenomeVersion actu
             }
         }
     }
+}
+
+static ResourceTestRunResult CreateManifestSampleResult(
+    ResourceTestId testId,
+    ResourceTestStatus status,
+    IEnumerable<ResourceTestDiagnostic>? diagnostics = null)
+{
+    return new ResourceTestRunResult(
+    [
+        new ResourceTestCaseResult(
+            testId,
+            status,
+            diagnostics ?? [],
+            tags: ["manifest"]),
+    ]);
 }
 
 static SystemDefinitionVersion TestVersion()
