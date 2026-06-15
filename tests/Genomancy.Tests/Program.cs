@@ -106,6 +106,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
     ("Resource test batch runner executes runs and builds manifest", ResourceTestBatchRunnerExecutesRunsAndBuildsManifest),
     ("Resource test batch runner respects options and rejects duplicate run ids", ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds),
+    ("Resource test batch text report summarizes runs and manifest", ResourceTestBatchTextReportSummarizesRunsAndManifest),
     ("Resource test batch JSON round trip materializes executable runs", ResourceTestBatchJsonRoundTripMaterializesExecutableRuns),
     ("Resource test batch JSON rejects unsupported and malformed plans", ResourceTestBatchJsonRejectsUnsupportedAndMalformedPlans),
     ("Resource test batch binary codec round trips and validates headers", ResourceTestBatchBinaryCodecRoundTripsAndValidatesHeaders),
@@ -121,6 +122,7 @@ var tests = new (string Name, Action Test)[]
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
     ("Godot adapter round trips result manifest documents", GodotAdapterRoundTripsResultManifestDocuments),
     ("Godot adapter round trips mosaic genome documents", GodotAdapterRoundTripsMosaicGenomeDocuments),
+    ("Godot adapter round trips resource test batch run documents", GodotAdapterRoundTripsResourceTestBatchRunDocuments),
     ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
 
@@ -2395,6 +2397,55 @@ static void ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds()
     ]));
 }
 
+static void ResourceTestBatchTextReportSummarizesRunsAndManifest()
+{
+    var passing = CreateResourceTestSpecification(
+        "resource-test.batch-report.passing",
+        invalidGene: false,
+        tags: ["fast"]).ToDefinition();
+    var failing = CreateResourceTestSpecification(
+        "resource-test.batch-report.failing",
+        invalidGene: true,
+        tags: ["negative"]).ToDefinition();
+    var batch = ResourceTestBatchRunner.Run(
+    [
+        new ResourceTestBatchRunRequest(
+            ResourceTestId.Parse("run.batch-report.z"),
+            "results/z.json",
+            [passing],
+            completedAtUtc: new DateTimeOffset(2026, 06, 15, 11, 00, 00, TimeSpan.Zero),
+            label: "Z run",
+            tags: ["report"]),
+        new ResourceTestBatchRunRequest(
+            ResourceTestId.Parse("run.batch-report.a"),
+            "results/a.json",
+            [failing],
+            tags: ["negative", "report"]),
+    ]);
+
+    var report = ResourceTestBatchRunTextReportFormatter.WriteToText(batch);
+
+    AssertTrue(report.Contains("Resource test batch: Passed", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Runs: 2 total", StringComparison.Ordinal), report);
+    AssertTrue(
+        report.Contains("- run.batch-report.a: Passed path=results/a.json cases=1 passed=1 failed=0", StringComparison.Ordinal),
+        report);
+    AssertTrue(report.Contains("Tags: negative, report", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Label: none", StringComparison.Ordinal), report);
+    AssertTrue(
+        report.Contains("- run.batch-report.z: Passed path=results/z.json cases=1 passed=1 failed=0", StringComparison.Ordinal),
+        report);
+    AssertTrue(report.Contains("Label: Z run", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Manifest entries:", StringComparison.Ordinal), report);
+    AssertTrue(
+        report.Contains("- run.batch-report.z: results/z.json completed=2026-06-15T11:00:00.0000000+00:00 status=Passed", StringComparison.Ordinal),
+        report);
+    AssertTrue(
+        report.IndexOf("run.batch-report.a", StringComparison.Ordinal)
+            < report.IndexOf("run.batch-report.z", StringComparison.Ordinal),
+        "Batch report runs must remain deterministically sorted by run id.");
+}
+
 static void ResourceTestBatchJsonRoundTripMaterializesExecutableRuns()
 {
     var fast = CreateResourceTestSpecification(
@@ -2932,6 +2983,57 @@ static void GodotAdapterRoundTripsMosaicGenomeDocuments()
     AssertTrue(
         !GodotResourceBridge.ImportGenomeVersion(document, TestVersion()).IsSuccess,
         "Importing a mosaic genome as a genome version must report a kind mismatch.");
+}
+
+static void GodotAdapterRoundTripsResourceTestBatchRunDocuments()
+{
+    var specifications = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.godot-batch.fast"),
+            "user://genomancy/results/fast.json",
+            [
+                CreateResourceTestSpecification(
+                    "resource-test.godot-batch.fast",
+                    invalidGene: false,
+                    tags: ["fast", "godot"]),
+            ],
+            new ResourceTestRunOptions(includeTags: ["fast"]),
+            tags: ["batch", "godot"]),
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.godot-batch.negative"),
+            "user://genomancy/results/negative.json",
+            [
+                CreateResourceTestSpecification(
+                    "resource-test.godot-batch.negative",
+                    invalidGene: true,
+                    tags: ["negative"]),
+            ],
+            tags: ["negative"]),
+    };
+    var document = GodotResourceBridge.ExportResourceTestBatchRuns(
+        GodotResourcePath.Parse("res://genomancy/resource-test-batch.godot.json"),
+        specifications);
+    var imported = GodotResourceBridge.ImportResourceTestBatchRuns(document);
+    var package = new GodotResourcePackage("genomancy.godot-batch-package", [document]);
+    var importedSpecifications = imported.Value ?? throw new InvalidOperationException("Batch import failed.");
+    var result = ResourceTestBatchRunner.RunSpecifications(importedSpecifications);
+
+    AssertEqual(GodotResourceKind.ResourceTestBatchRuns, document.Kind);
+    AssertEqual(TestVersion().Value, document.SystemDefinitionVersion);
+    AssertTrue(
+        document.Tags.SequenceEqual(["batch", "fast", "godot", "negative"]),
+        "Batch document tags must combine run and nested test tags.");
+    AssertTrue(imported.IsSuccess, GodotDiagnosticsToString(imported.Diagnostics));
+    AssertEqual(
+        ResourceTestBatchRunJsonCodec.WriteToText(specifications),
+        ResourceTestBatchRunJsonCodec.WriteToText(importedSpecifications));
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertEqual(2, result.Runs.Count);
+    AssertEqual(document, package.Get(GodotResourcePath.Parse("res://genomancy/resource-test-batch.godot.json")));
+    AssertTrue(
+        !GodotResourceBridge.ImportResourceTests(document).IsSuccess,
+        "Importing a batch plan as resource tests must report a kind mismatch.");
 }
 
 static void GodotAdapterBridgesResourceTestsAndRuntimeStartup()

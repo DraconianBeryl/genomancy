@@ -1,0 +1,62 @@
+using System.Text;
+
+namespace Genomancy.Core.ResourceTesting;
+
+public static class ResourceTestBatchRunTextReportFormatter
+{
+    public static string WriteToText(ResourceTestBatchRunResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var builder = new StringBuilder();
+
+        builder.AppendLine($"Resource test batch: {result.Status}");
+        builder.AppendLine($"Runs: {result.Runs.Count} total");
+        builder.AppendLine("Runs:");
+
+        foreach (var run in result.Runs)
+        {
+            var summary = run.ManifestEntry.Summary;
+
+            builder.AppendLine(
+                $"- {run.RunId}: {summary.Status} path={run.ResultPath} cases={summary.TotalCases} passed={summary.PassedCases} failed={summary.FailedCases}");
+            builder.AppendLine(
+                $"  Diagnostics: {summary.TotalDiagnostics} total, {summary.ErrorDiagnostics} error, {summary.WarningDiagnostics} warning, {summary.InfoDiagnostics} info");
+            builder.AppendLine($"  Reproducibility packets: {summary.ReproducibilityPackets}");
+            builder.AppendLine($"  Tags: {FormatTags(run.ManifestEntry.Tags)}");
+
+            if (string.IsNullOrWhiteSpace(run.ManifestEntry.Label))
+            {
+                builder.AppendLine("  Label: none");
+            }
+            else
+            {
+                builder.AppendLine($"  Label: {run.ManifestEntry.Label}");
+            }
+        }
+
+        builder.AppendLine("Manifest entries:");
+
+        foreach (var entry in result.Manifest.Entries)
+        {
+            builder.AppendLine(
+                $"- {entry.RunId}: {entry.ResultPath} completed={FormatCompletedAt(entry.CompletedAtUtc)} status={entry.Summary.Status}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatCompletedAt(DateTimeOffset? completedAtUtc)
+    {
+        return completedAtUtc is null
+            ? "none"
+            : completedAtUtc.Value.ToUniversalTime().ToString("O");
+    }
+
+    private static string FormatTags(IReadOnlyCollection<string> tags)
+    {
+        return tags.Count == 0
+            ? "none"
+            : string.Join(", ", tags);
+    }
+}

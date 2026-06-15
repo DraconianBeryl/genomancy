@@ -134,6 +134,42 @@ public static class GodotResourceBridge
             () => ResourceTestJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
     }
 
+    public static GodotResourceDocument ExportResourceTestBatchRuns(
+        GodotResourcePath path,
+        IEnumerable<ResourceTestBatchRunSpecification> specifications)
+    {
+        ArgumentNullException.ThrowIfNull(specifications);
+
+        var materialized = specifications.ToArray();
+        var versions = materialized
+            .SelectMany(specification => specification.Tests)
+            .Select(specification => specification.SystemDefinitionVersion.Value)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var tags = materialized
+            .SelectMany(specification => specification.Tags.Concat(specification.Tests.SelectMany(test => test.Tags)))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.ResourceTestBatchRuns,
+            ResourceTestBatchRunJsonCodec.WriteToText(materialized),
+            string.Join(",", versions),
+            tags);
+    }
+
+    public static GodotAdapterResult<IReadOnlyList<ResourceTestBatchRunSpecification>> ImportResourceTestBatchRuns(
+        GodotResourceDocument document)
+    {
+        return Import(
+            document,
+            GodotResourceKind.ResourceTestBatchRuns,
+            () => ResourceTestBatchRunJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
+    }
+
     public static GodotResourceDocument ExportResourceTestResult(
         GodotResourcePath path,
         ResourceTestRunResult result)
