@@ -21,7 +21,10 @@ Implemented optional boundaries:
   typed factories for selected core resources such as resource-test results,
   result manifests, batch-run plans, and batch-run results. It also provides a
   storage-backed result-manifest updater that composes the core manifest
-  merge/upsert utilities with caller-selected JSON manifest files.
+  merge/upsert utilities with caller-selected JSON manifest files, and a
+  storage-backed batch execution workflow that loads caller-selected batch
+  plans, writes individual and aggregate result files, and optionally updates a
+  caller-selected manifest.
 
 The following boundaries are reserved for later slices:
 

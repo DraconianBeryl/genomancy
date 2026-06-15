@@ -124,6 +124,7 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage updates resource test result manifests outside core", JsonFileStorageUpdatesResourceTestResultManifestsOutsideCore),
     ("JSON file storage persists resource test batch plans outside core", JsonFileStoragePersistsResourceTestBatchPlansOutsideCore),
     ("JSON file storage persists resource test batch results outside core", JsonFileStoragePersistsResourceTestBatchResultsOutsideCore),
+    ("JSON file storage executes resource test batch plans outside core", JsonFileStorageExecutesResourceTestBatchPlansOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -3168,6 +3169,113 @@ static void JsonFileStoragePersistsResourceTestBatchResultsOutsideCore()
         var root = Path.GetDirectoryName(path);
 
         if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void JsonFileStorageExecutesResourceTestBatchPlansOutsideCore()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}");
+    var planPath = Path.Combine(root, "plans", "resource-test-batch-plan.json");
+    var runResultRootPath = Path.Combine(root, "run-results");
+    var batchResultPath = Path.Combine(root, "batch-results", "resource-test-batch-result.json");
+    var manifestPath = Path.Combine(root, "manifests", "resource-test-result-manifest.json");
+    var intentionallyFailing = new ResourceTestSpecification(
+        ResourceTestId.Parse("resource-test.batch-workflow.failed"),
+        TestVersion(),
+        CreateResourceTestFixture(invalidGene: false),
+        [
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ValidateSystemDefinitionKind),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationResultKind, expectedValid: false),
+        ],
+        displayName: "resource-test.batch-workflow.failed",
+        tags: ["workflow", "negative"]);
+    var specifications = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.batch-workflow.passed"),
+            "passed.json",
+            [
+                CreateResourceTestSpecification(
+                    "resource-test.batch-workflow.passed",
+                    invalidGene: false,
+                    tags: ["workflow", "fast"]),
+            ],
+            new ResourceTestRunOptions(includeTags: ["fast"]),
+            new DateTimeOffset(2026, 06, 15, 14, 00, 00, TimeSpan.Zero),
+            label: "Workflow passing run",
+            tags: ["workflow"]),
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.batch-workflow.failed"),
+            "nested/failed.json",
+            [intentionallyFailing],
+            completedAtUtc: new DateTimeOffset(2026, 06, 15, 14, 05, 00, TimeSpan.Zero),
+            label: "Workflow failing run",
+            tags: ["workflow", "negative"]),
+    };
+    var planStore = ResourceTestBatchRunJsonFileStore.Create();
+    var runResultStore = ResourceTestResultJsonFileStore.Create();
+    var batchResultStore = ResourceTestBatchRunResultJsonFileStore.Create();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var workflow = new ResourceTestBatchRunJsonFileWorkflow();
+
+    try
+    {
+        planStore.Save(planPath, specifications);
+
+        var execution = workflow.ExecuteAndUpsertManifest(
+            planPath,
+            batchResultPath,
+            manifestPath,
+            runResultRootPath);
+        var loadedBatchResult = batchResultStore.Load(batchResultPath);
+        var loadedManifest = manifestStore.Load(manifestPath);
+        var writtenPassed = runResultStore.Load(Path.Combine(runResultRootPath, "passed.json"));
+        var writtenFailed = runResultStore.Load(Path.Combine(runResultRootPath, "nested", "failed.json"));
+
+        AssertEqual(ResourceTestStatus.Failed, execution.BatchResult.Status);
+        AssertEqual(
+            ResourceTestBatchRunResultJsonCodec.WriteToText(execution.BatchResult),
+            ResourceTestBatchRunResultJsonCodec.WriteToText(loadedBatchResult));
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(execution.UpdatedManifest ?? throw new InvalidOperationException("Manifest was not updated.")),
+            ResourceTestResultManifestJsonCodec.WriteToText(loadedManifest));
+        AssertEqual(2, execution.WrittenRunResultPaths.Count);
+        AssertTrue(File.Exists(batchResultPath), "Batch workflow must write the aggregate batch result.");
+        AssertTrue(File.Exists(Path.Combine(runResultRootPath, "passed.json")), "Batch workflow must write the passing run result.");
+        AssertTrue(File.Exists(Path.Combine(runResultRootPath, "nested", "failed.json")), "Batch workflow must write nested run results.");
+        AssertEqual(ResourceTestStatus.Passed, writtenPassed.Status);
+        AssertEqual(ResourceTestStatus.Failed, writtenFailed.Status);
+        AssertEqual("run.batch-workflow.failed", loadedManifest.Entries[0].RunId.Value);
+        AssertEqual("nested/failed.json", loadedManifest.Entries[0].ResultPath);
+        AssertEqual("run.batch-workflow.passed", loadedManifest.Entries[1].RunId.Value);
+
+        var rerun = workflow.ExecuteAndUpsertManifest(
+            planPath,
+            batchResultPath,
+            manifestPath,
+            runResultRootPath);
+        var rerunManifest = manifestStore.Load(manifestPath);
+
+        AssertEqual(2, rerunManifest.Entries.Count);
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(rerun.UpdatedManifest ?? throw new InvalidOperationException("Manifest was not updated.")),
+            ResourceTestResultManifestJsonCodec.WriteToText(rerunManifest));
+        AssertThrows<ArgumentException>(
+            () => workflow.ExecuteAndAppendManifest(
+                planPath,
+                batchResultPath,
+                manifestPath,
+                runResultRootPath));
+    }
+    finally
+    {
+        if (Directory.Exists(root))
         {
             Directory.Delete(root, recursive: true);
         }
