@@ -106,6 +106,8 @@ var tests = new (string Name, Action Test)[]
     ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
     ("Resource test batch runner executes runs and builds manifest", ResourceTestBatchRunnerExecutesRunsAndBuildsManifest),
     ("Resource test batch runner respects options and rejects duplicate run ids", ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds),
+    ("Resource test batch JSON round trip materializes executable runs", ResourceTestBatchJsonRoundTripMaterializesExecutableRuns),
+    ("Resource test batch JSON rejects unsupported and malformed plans", ResourceTestBatchJsonRejectsUnsupportedAndMalformedPlans),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -2389,6 +2391,80 @@ static void ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds()
         new ResourceTestBatchRunRequest(ResourceTestId.Parse("run.duplicate"), "results/one.json", [fast]),
         new ResourceTestBatchRunRequest(ResourceTestId.Parse("run.duplicate"), "results/two.json", [slow]),
     ]));
+}
+
+static void ResourceTestBatchJsonRoundTripMaterializesExecutableRuns()
+{
+    var fast = CreateResourceTestSpecification(
+        "resource-test.batch-json.fast",
+        invalidGene: false,
+        tags: ["fast"]);
+    var slow = CreateResourceTestSpecification(
+        "resource-test.batch-json.slow",
+        invalidGene: false,
+        tags: ["slow"]);
+    var negative = CreateResourceTestSpecification(
+        "resource-test.batch-json.negative",
+        invalidGene: true,
+        tags: ["negative"]);
+    var specifications = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.batch-json.z"),
+            "results/z.json",
+            [slow, fast],
+            new ResourceTestRunOptions(includeTags: ["fast"], maximumDiagnosticSeverity: ResourceTestSeverity.Warning),
+            new DateTimeOffset(2026, 06, 12, 16, 00, 00, TimeSpan.FromHours(-5)),
+            label: "Filtered run",
+            tags: ["batch", "json"]),
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.batch-json.a"),
+            "results/a.json",
+            [negative],
+            tags: ["negative"]),
+    };
+    var text = ResourceTestBatchRunJsonCodec.WriteToText(specifications);
+    var roundTrip = ResourceTestBatchRunJsonCodec.ReadFromBuffer(
+        ResourceTestBatchRunJsonCodec.WriteToBuffer(specifications));
+    var result = ResourceTestBatchRunner.RunSpecifications(roundTrip);
+
+    AssertEqual(text, ResourceTestBatchRunJsonCodec.WriteToText(roundTrip));
+    AssertEqual("run.batch-json.a", roundTrip[0].RunId.Value);
+    AssertEqual("run.batch-json.z", roundTrip[1].RunId.Value);
+    AssertEqual(ResourceTestSeverity.Warning, roundTrip[1].Options.MaximumDiagnosticSeverity);
+    AssertTrue(roundTrip[1].Options.IncludeTags.SetEquals(["fast"]), "Include tags must round trip.");
+    AssertEqual(TimeSpan.Zero, roundTrip[1].CompletedAtUtc?.Offset);
+    AssertEqual(21, roundTrip[1].CompletedAtUtc?.Hour);
+    AssertEqual(ResourceTestStatus.Passed, result.Status);
+    AssertEqual(2, result.Runs.Count);
+    AssertEqual(1, result.Runs.Single(run => run.RunId.Value == "run.batch-json.z").Result.Cases.Count);
+    AssertEqual(
+        "resource-test.batch-json.fast",
+        result.Runs.Single(run => run.RunId.Value == "run.batch-json.z").Result.Cases.Single().TestId.Value);
+    AssertTrue(
+        text.Contains("\"resourceTests\":{\"envelopeVersion\":1", StringComparison.Ordinal),
+        text);
+}
+
+static void ResourceTestBatchJsonRejectsUnsupportedAndMalformedPlans()
+{
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"runs":[]}"""u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"runs":[{"runId":"run.bad","resultPath":"results/bad.json","completedAtUtc":"not a date","resourceTests":{"envelopeVersion":1,"tests":[]}}]}
+            """u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"runs":[{"runId":"run.bad","resultPath":"results/bad.json","options":{"maximumDiagnosticSeverity":"Nope"},"resourceTests":{"envelopeVersion":1,"tests":[]}}]}
+            """u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"runs":[{"runId":"run.bad","resultPath":"results/bad.json"}]}
+            """u8));
 }
 
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()

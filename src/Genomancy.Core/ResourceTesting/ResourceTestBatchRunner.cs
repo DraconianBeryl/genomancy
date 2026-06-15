@@ -2,6 +2,14 @@ namespace Genomancy.Core.ResourceTesting;
 
 public static class ResourceTestBatchRunner
 {
+    public static ResourceTestBatchRunResult RunSpecifications(
+        IEnumerable<ResourceTestBatchRunSpecification> specifications)
+    {
+        ArgumentNullException.ThrowIfNull(specifications);
+
+        return Run(specifications.Select(specification => specification.ToRequest()));
+    }
+
     public static ResourceTestBatchRunResult Run(IEnumerable<ResourceTestBatchRunRequest> requests)
     {
         ArgumentNullException.ThrowIfNull(requests);
