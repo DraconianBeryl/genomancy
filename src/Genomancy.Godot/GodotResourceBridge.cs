@@ -204,6 +204,43 @@ public static class GodotResourceBridge
             () => ResourceTestResultJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
     }
 
+    public static GodotResourceDocument ExportResourceTestBatchRunResult(
+        GodotResourcePath path,
+        ResourceTestBatchRunResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var versions = result.Runs
+            .SelectMany(run => run.Result.Cases)
+            .SelectMany(testCase => testCase.ReproducibilityPackets)
+            .Select(packet => packet.ResourceSetVersion.Value)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var tags = result.Manifest.Entries
+            .SelectMany(entry => entry.Tags)
+            .Concat(result.Runs.SelectMany(run => run.Result.Cases.SelectMany(testCase => testCase.Tags)))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        return new GodotResourceDocument(
+            path,
+            GodotResourceKind.ResourceTestBatchRunResult,
+            ResourceTestBatchRunResultJsonCodec.WriteToText(result),
+            string.Join(",", versions),
+            tags);
+    }
+
+    public static GodotAdapterResult<ResourceTestBatchRunResult> ImportResourceTestBatchRunResult(
+        GodotResourceDocument document)
+    {
+        return Import(
+            document,
+            GodotResourceKind.ResourceTestBatchRunResult,
+            () => ResourceTestBatchRunResultJsonCodec.ReadFromBuffer(Encoding.UTF8.GetBytes(document.PayloadJson)));
+    }
+
     public static GodotResourceDocument ExportResourceTestResultManifest(
         GodotResourcePath path,
         ResourceTestResultManifest manifest)

@@ -9,20 +9,25 @@ public static class ResourceTestBatchRunTextReportFormatter
         ArgumentNullException.ThrowIfNull(result);
 
         var builder = new StringBuilder();
+        var summary = ResourceTestBatchRunSummary.FromResult(result);
 
-        builder.AppendLine($"Resource test batch: {result.Status}");
-        builder.AppendLine($"Runs: {result.Runs.Count} total");
+        builder.AppendLine($"Resource test batch: {summary.Status}");
+        builder.AppendLine($"Runs: {summary.TotalRuns} total, {summary.PassedRuns} passed, {summary.FailedRuns} failed");
+        builder.AppendLine($"Cases: {summary.TotalCases} total, {summary.PassedCases} passed, {summary.FailedCases} failed");
+        builder.AppendLine(
+            $"Diagnostics: {summary.TotalDiagnostics} total, {summary.ErrorDiagnostics} error, {summary.WarningDiagnostics} warning, {summary.InfoDiagnostics} info");
+        builder.AppendLine($"Reproducibility packets: {summary.ReproducibilityPackets}");
         builder.AppendLine("Runs:");
 
         foreach (var run in result.Runs)
         {
-            var summary = run.ManifestEntry.Summary;
+            var runSummary = run.ManifestEntry.Summary;
 
             builder.AppendLine(
-                $"- {run.RunId}: {summary.Status} path={run.ResultPath} cases={summary.TotalCases} passed={summary.PassedCases} failed={summary.FailedCases}");
+                $"- {run.RunId}: {runSummary.Status} path={run.ResultPath} cases={runSummary.TotalCases} passed={runSummary.PassedCases} failed={runSummary.FailedCases}");
             builder.AppendLine(
-                $"  Diagnostics: {summary.TotalDiagnostics} total, {summary.ErrorDiagnostics} error, {summary.WarningDiagnostics} warning, {summary.InfoDiagnostics} info");
-            builder.AppendLine($"  Reproducibility packets: {summary.ReproducibilityPackets}");
+                $"  Diagnostics: {runSummary.TotalDiagnostics} total, {runSummary.ErrorDiagnostics} error, {runSummary.WarningDiagnostics} warning, {runSummary.InfoDiagnostics} info");
+            builder.AppendLine($"  Reproducibility packets: {runSummary.ReproducibilityPackets}");
             builder.AppendLine($"  Tags: {FormatTags(run.ManifestEntry.Tags)}");
 
             if (string.IsNullOrWhiteSpace(run.ManifestEntry.Label))

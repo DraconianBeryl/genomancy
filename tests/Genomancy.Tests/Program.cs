@@ -112,6 +112,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test batch binary codec round trips and validates headers", ResourceTestBatchBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test batch result codecs preserve runs and manifests", ResourceTestBatchResultCodecsPreserveRunsAndManifests),
     ("Resource test batch result JSON rejects unsupported and inconsistent results", ResourceTestBatchResultJsonRejectsUnsupportedAndInconsistentResults),
+    ("Resource test batch run summary rolls up run case diagnostic and packet counts", ResourceTestBatchRunSummaryRollsUpCounts),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -126,6 +127,7 @@ var tests = new (string Name, Action Test)[]
     ("Godot adapter round trips result manifest documents", GodotAdapterRoundTripsResultManifestDocuments),
     ("Godot adapter round trips mosaic genome documents", GodotAdapterRoundTripsMosaicGenomeDocuments),
     ("Godot adapter round trips resource test batch run documents", GodotAdapterRoundTripsResourceTestBatchRunDocuments),
+    ("Godot adapter round trips resource test batch result documents", GodotAdapterRoundTripsResourceTestBatchResultDocuments),
     ("Godot adapter bridges resource tests and runtime startup", GodotAdapterBridgesResourceTestsAndRuntimeStartup),
 };
 
@@ -2429,7 +2431,10 @@ static void ResourceTestBatchTextReportSummarizesRunsAndManifest()
     var report = ResourceTestBatchRunTextReportFormatter.WriteToText(batch);
 
     AssertTrue(report.Contains("Resource test batch: Passed", StringComparison.Ordinal), report);
-    AssertTrue(report.Contains("Runs: 2 total", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Runs: 2 total, 2 passed, 0 failed", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Cases: 2 total, 2 passed, 0 failed", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Diagnostics: 0 total, 0 error, 0 warning, 0 info", StringComparison.Ordinal), report);
+    AssertTrue(report.Contains("Reproducibility packets: 0", StringComparison.Ordinal), report);
     AssertTrue(
         report.Contains("- run.batch-report.a: Passed path=results/a.json cases=1 passed=1 failed=0", StringComparison.Ordinal),
         report);
@@ -2609,6 +2614,29 @@ static void ResourceTestBatchResultJsonRejectsUnsupportedAndInconsistentResults(
             """
             {"envelopeVersion":1,"status":"Passed","runs":[{"runId":"run.batch-result.failed","resultPath":"results/failed.json","result":{"envelopeVersion":1,"status":"Failed","cases":[{"testId":"resource-test.batch-result.failed","status":"Failed","tags":[],"diagnostics":[{"severity":"Error","code":"EXPECTED","path":"tests/expected","message":"Expected failure."}],"reproducibilityPackets":[]}]}}]}
             """u8));
+}
+
+static void ResourceTestBatchRunSummaryRollsUpCounts()
+{
+    var batch = CreateBatchResultCodecSample();
+    var summary = ResourceTestBatchRunSummary.FromResult(batch);
+    var emptySummary = ResourceTestBatchRunSummary.FromResult(new ResourceTestBatchRunResult([]));
+
+    AssertEqual(ResourceTestStatus.Failed, summary.Status);
+    AssertEqual(2, summary.TotalRuns);
+    AssertEqual(1, summary.PassedRuns);
+    AssertEqual(1, summary.FailedRuns);
+    AssertEqual(2, summary.TotalCases);
+    AssertEqual(1, summary.PassedCases);
+    AssertEqual(1, summary.FailedCases);
+    AssertEqual(1, summary.TotalDiagnostics);
+    AssertEqual(1, summary.ErrorDiagnostics);
+    AssertEqual(0, summary.WarningDiagnostics);
+    AssertEqual(0, summary.InfoDiagnostics);
+    AssertEqual(0, summary.ReproducibilityPackets);
+    AssertEqual(ResourceTestStatus.Passed, emptySummary.Status);
+    AssertEqual(0, emptySummary.TotalRuns);
+    AssertEqual(0, emptySummary.TotalCases);
 }
 
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
@@ -3123,6 +3151,30 @@ static void GodotAdapterRoundTripsResourceTestBatchRunDocuments()
     AssertTrue(
         !GodotResourceBridge.ImportResourceTests(document).IsSuccess,
         "Importing a batch plan as resource tests must report a kind mismatch.");
+}
+
+static void GodotAdapterRoundTripsResourceTestBatchResultDocuments()
+{
+    var batch = CreateBatchResultCodecSample();
+    var document = GodotResourceBridge.ExportResourceTestBatchRunResult(
+        GodotResourcePath.Parse("user://genomancy/resource-test-batch-result.godot.json"),
+        batch);
+    var imported = GodotResourceBridge.ImportResourceTestBatchRunResult(document);
+    var package = new GodotResourcePackage("genomancy.godot-batch-result-package", [document]);
+
+    AssertEqual(GodotResourceKind.ResourceTestBatchRunResult, document.Kind);
+    AssertEqual(string.Empty, document.SystemDefinitionVersion);
+    AssertTrue(
+        document.Tags.SequenceEqual(["batch-result", "failed", "passed"]),
+        "Batch result document tags must combine manifest and case tags.");
+    AssertTrue(imported.IsSuccess, GodotDiagnosticsToString(imported.Diagnostics));
+    AssertEqual(
+        ResourceTestBatchRunResultJsonCodec.WriteToText(batch),
+        ResourceTestBatchRunResultJsonCodec.WriteToText(imported.Value ?? throw new InvalidOperationException("Batch result import failed.")));
+    AssertEqual(document, package.Get(GodotResourcePath.Parse("user://genomancy/resource-test-batch-result.godot.json")));
+    AssertTrue(
+        !GodotResourceBridge.ImportResourceTestResult(document).IsSuccess,
+        "Importing a batch result as a single result must report a kind mismatch.");
 }
 
 static void GodotAdapterBridgesResourceTestsAndRuntimeStartup()
