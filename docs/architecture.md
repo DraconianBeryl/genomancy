@@ -19,7 +19,9 @@ Implemented optional boundaries:
 - `Genomancy.Storage.JsonFile` depends on `Genomancy.Core` and provides generic
   atomic JSON-file persistence using caller-supplied core stream codecs, plus
   typed factories for selected core resources such as resource-test results,
-  result manifests, batch-run plans, and batch-run results.
+  result manifests, batch-run plans, and batch-run results. It also provides a
+  storage-backed result-manifest updater that composes the core manifest
+  merge/upsert utilities with caller-selected JSON manifest files.
 
 The following boundaries are reserved for later slices:
 

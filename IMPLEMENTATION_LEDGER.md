@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-15 |
-| Current implementation slice | Slice 37 - Resource-test manifest merge/update utilities (verified); later hardening/release work is next |
+| Current implementation slice | Slice 38 - JSON-file resource-test manifest update workflow (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -99,6 +99,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-15 | Expand scope to Slice 35 Godot bridge for batch-run results. | Project request to implement the next double slice and allow scope expansion | Adds package-free Godot document import/export for aggregate resource-test batch-run results, without adding GodotSharp resources, editor tooling, binary Godot import/export, result dereferencing, or persistence policy. | Accepted |
 | 2026-06-15 | Expand scope to Slice 36 batch-run summary rollups. | Project request to implement the next double slice and allow scope expansion | Adds reusable derived aggregate summaries for batch-run results and updates text reporting to use them, without serializing separate summary resources or defining CLI output. | Accepted |
 | 2026-06-15 | Expand scope to Slice 37 resource-test manifest merge/update utilities. | Project request to implement the next ambitious slice and allow planned-scope expansion | Adds deterministic in-memory manifest append and upsert helpers over existing manifests, manifest entries, and aggregate batch-run results, without defining filesystem writes, retention, CLI commands, or project layout. | Accepted |
+| 2026-06-15 | Expand scope to Slice 38 JSON-file resource-test manifest update workflow. | Project request to implement the next ambitious slice and allow planned-scope expansion | Adds optional storage-backed append/upsert operations for caller-selected JSON manifest files, without defining result-file writes, retention, CLI commands, locking, or project layout. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -2071,7 +2072,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Serialized standalone summary resources, CLI status formatting, duration metrics, parallel execution metrics, retention/naming policy, storage-backed manifest update workflows, or broader report formats.
+- Serialized standalone summary resources, CLI status formatting, duration metrics, parallel execution metrics, retention/naming policy, automated manifest update/report workflows, or broader report formats.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE.
 
@@ -2120,7 +2121,59 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- CLI commands, storage-module save/load composition, automatic result-file writes, manifest retention/naming policy, project layout, result dereferencing, merge conflict reports, historical manifest snapshots, or editor/Godot update actions.
+- CLI commands, automatic result-file writes, manifest retention/naming policy, project layout, result dereferencing, merge conflict reports, historical manifest snapshots, or editor/Godot update actions.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-STORAGE.
+
+### Slice 38 - JSON-file resource-test manifest update workflow
+
+**Status:** Verified on 2026-06-15 for the refined Slice 38 acceptance criteria. Result-file writes, retention policy, CLI commands, project layout, cross-process locking, manifest history/conflict records, and result dereferencing remain **In progress**.
+
+**Objective:** Compose the optional JSON-file storage boundary with the Slice 37 manifest merge/update utilities so callers can maintain a selected manifest index file without giving core a filesystem dependency or defining a repository layout.
+
+**Deliverables**
+
+- Add `ResourceTestResultManifestJsonFileUpdater` in `Genomancy.Storage.JsonFile`.
+- Create a missing manifest file as an empty manifest plus incoming entries.
+- Load an existing manifest, apply strict append semantics, and atomically save the updated manifest.
+- Load an existing manifest, apply upsert/rerun semantics, and atomically save the updated manifest.
+- Support update inputs from raw manifest entries, complete manifests, and aggregate batch-run results.
+- Keep result artifacts separate; do not write individual result files or infer their paths.
+
+**Acceptance criteria**
+
+- A missing manifest path can be created through append update.
+- Saved manifest JSON reloads canonically through the existing manifest store.
+- Append update preserves deterministic manifest ordering and entry metadata.
+- Upsert update replaces an existing run entry by stable `runId`.
+- Append update rejects existing-run replacement and leaves the manifest file unchanged on failure.
+- Batch-result upsert adds aggregate batch manifest entries to the stored manifest.
+
+**Tests**
+
+- JSON-file manifest updater creates a missing manifest file.
+- Stored manifest update round trips through `ResourceTestResultManifestJsonFileStore`.
+- Upsert replacement preserves status, label, UTC timestamp normalization, and sorted tags.
+- Strict append duplicate rejection leaves the stored file unchanged.
+- Batch-result upsert appends batch manifest entries.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestResultManifestJsonFileUpdater`.
+- Append and upsert methods for entries, manifests, and aggregate batch-run results.
+- Package-free implementation test for create/update/reject/batch-upsert behavior.
+- Architecture note for the storage-backed updater boundary.
+
+**Implementation simplification choices**
+
+- The updater uses a caller-selected single manifest path; it does not define directory layout, naming, retention, or discovery policy.
+- Updates are load/merge-or-upsert/save operations over the existing atomic JSON-file store; no cross-process locking or compare-and-swap contract is provided.
+- Result paths remain opaque manifest-entry strings; the updater does not write or dereference result files.
+
+**Not yet implemented**
+
+- CLI commands, automatic result-file writes, result file layout, manifest retention/naming policy, cross-process locking, compare-and-swap conflict detection, project layout, result dereferencing, merge conflict reports, historical manifest snapshots, or editor/Godot update actions.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-STORAGE.
 
@@ -2353,6 +2406,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - direct merge/update inputs from aggregate batch-run results
   - duplicate incoming run-ID rejection for strict merge
   - metadata normalization preservation through existing manifest-entry invariants
+- Slice 38 JSON-file resource-test manifest update workflow:
+  - optional storage-backed manifest append/upsert updater
+  - creation of missing caller-selected manifest files
+  - persisted strict append and rerun/update behavior
+  - stored-file preservation when strict append rejects duplicate run ids
+  - batch-result manifest entry upsert into persisted manifests
 
 ### Not yet implemented
 
@@ -2363,7 +2422,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, storage-backed manifest merge/update workflows, result file layout, result writes, compact/final batch-plan and batch-result binary schemas, and result retention/naming policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, manifest retention/naming policy, result file layout, result writes, compact/final batch-plan and batch-result binary schemas, and cross-process storage concurrency controls.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, manifest/result/batch-plan file dereferencing, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -2402,6 +2461,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 35 exposes aggregate batch results through the package-free Godot document bridge only; it does not add GodotSharp resources, editor tooling, binary Godot import/export, file dereferencing, persistence policy, or CLI behavior.
 - Slice 36 derives batch summaries from materialized in-memory results only; it does not serialize standalone summary resources, track durations, define CLI status output, or add retention/merge policy.
 - Slice 37 merges and upserts materialized in-memory manifests only; it does not load/save manifests, write result files, define retention/project layout policy, expose CLI commands, or record merge conflict history.
+- Slice 38 updates one caller-selected manifest JSON file at a time; it does not write result files, define output directories, define retention/project layout policy, expose CLI commands, provide cross-process locking, or record merge conflict history.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -2614,6 +2674,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - existing run-ID replacement rejection in strict merge mode
   - batch-result upsert replacement and append behavior
   - repeated incoming run-ID last-entry-wins behavior in upsert mode
+- Slice 38 package-free implementation tests in `tests/Genomancy.Tests`:
+  - JSON-file manifest updater creation of a missing manifest file
+  - stored manifest append and canonical reload through the typed manifest store
+  - stored manifest upsert replacement with metadata normalization
+  - strict append duplicate rejection with stored-file preservation
+  - persisted batch-result manifest entry upsert
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -2656,13 +2722,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 35 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 36 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 37 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 38 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory manifest merge/upsert helpers, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, derived aggregate batch-run summaries, serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage, and serialized JSON/binary aggregate batch-run results with optional JSON-file storage. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, resource-test-batch-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, storage-backed manifest update workflows, CLI host/commands, result file writes, compact/final batch-plan or batch-result binary schemas, standalone summary resources, and project file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory manifest merge/upsert helpers, optional JSON-file manifest append/upsert workflows, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, derived aggregate batch-run summaries, serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage, and serialized JSON/binary aggregate batch-run results with optional JSON-file storage. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, resource-test-batch-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, CLI host/commands, result file writes, compact/final batch-plan or batch-result binary schemas, standalone summary resources, cross-process storage concurrency controls, and project file layout do not exist yet.
 
 ### Test layers required by the project
 

@@ -121,6 +121,7 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage persists resource test specs outside core", JsonFileStoragePersistsResourceTestSpecsOutsideCore),
     ("JSON file storage persists resource test results outside core", JsonFileStoragePersistsResourceTestResultsOutsideCore),
     ("JSON file storage persists resource test result manifests outside core", JsonFileStoragePersistsResourceTestResultManifestsOutsideCore),
+    ("JSON file storage updates resource test result manifests outside core", JsonFileStorageUpdatesResourceTestResultManifestsOutsideCore),
     ("JSON file storage persists resource test batch plans outside core", JsonFileStoragePersistsResourceTestBatchPlansOutsideCore),
     ("JSON file storage persists resource test batch results outside core", JsonFileStoragePersistsResourceTestBatchResultsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
@@ -2982,6 +2983,102 @@ static void JsonFileStoragePersistsResourceTestResultManifestsOutsideCore()
         AssertEqual(1, entry.Summary.ErrorDiagnostics);
         AssertEqual("results/resource-test-result.json", entry.ResultPath);
         AssertTrue(File.Exists(path), "Result manifest store must create the requested JSON file.");
+    }
+    finally
+    {
+        var root = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void JsonFileStorageUpdatesResourceTestResultManifestsOutsideCore()
+{
+    var path = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}",
+        "resource-test-result-manifest-index.json");
+    var updater = new ResourceTestResultManifestJsonFileUpdater();
+    var store = ResourceTestResultManifestJsonFileStore.Create();
+    var first = ResourceTestResultManifestEntry.FromResult(
+        ResourceTestId.Parse("run.manifest-index.first"),
+        "results/first.json",
+        CreateManifestSampleResult(
+            ResourceTestId.Parse("resource-test.manifest-index.first"),
+            ResourceTestStatus.Passed),
+        tags: ["index", "first"]);
+    var second = ResourceTestResultManifestEntry.FromResult(
+        ResourceTestId.Parse("run.manifest-index.second"),
+        "results/second.json",
+        CreateManifestSampleResult(
+            ResourceTestId.Parse("resource-test.manifest-index.second"),
+            ResourceTestStatus.Passed),
+        tags: ["index", "second"]);
+    var replacement = ResourceTestResultManifestEntry.FromResult(
+        ResourceTestId.Parse("run.manifest-index.first"),
+        "results/first-rerun.json",
+        CreateManifestSampleResult(
+            ResourceTestId.Parse("resource-test.manifest-index.first-rerun"),
+            ResourceTestStatus.Failed,
+            [
+                new ResourceTestDiagnostic(
+                    ResourceTestSeverity.Error,
+                    "MANIFEST_INDEX_RERUN",
+                    "tests/manifest-index/rerun",
+                    "Rerun failure."),
+            ]),
+        new DateTimeOffset(2026, 06, 15, 13, 00, 00, TimeSpan.FromHours(-5)),
+        label: "First rerun",
+        tags: ["rerun", "index"]);
+
+    try
+    {
+        var created = updater.AppendEntries(path, [second, first]);
+        var loadedCreated = store.Load(path);
+
+        AssertTrue(File.Exists(path), "Manifest updater must create a missing manifest file.");
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(created),
+            ResourceTestResultManifestJsonCodec.WriteToText(loadedCreated));
+        AssertEqual("run.manifest-index.first", loadedCreated.Entries[0].RunId.Value);
+        AssertEqual("run.manifest-index.second", loadedCreated.Entries[1].RunId.Value);
+
+        var upserted = updater.UpsertEntries(path, [replacement]);
+        var loadedUpserted = store.Load(path);
+
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(upserted),
+            ResourceTestResultManifestJsonCodec.WriteToText(loadedUpserted));
+        AssertEqual(2, loadedUpserted.Entries.Count);
+        AssertEqual("results/first-rerun.json", loadedUpserted.Entries[0].ResultPath);
+        AssertEqual(ResourceTestStatus.Failed, loadedUpserted.Entries[0].Summary.Status);
+        AssertEqual("First rerun", loadedUpserted.Entries[0].Label);
+        AssertEqual(TimeSpan.Zero, loadedUpserted.Entries[0].CompletedAtUtc?.Offset);
+        AssertEqual(18, loadedUpserted.Entries[0].CompletedAtUtc?.Hour);
+        AssertTrue(
+            loadedUpserted.Entries[0].Tags.SequenceEqual(["index", "rerun"]),
+            "Manifest updater must preserve entry normalization after upsert.");
+
+        AssertThrows<ArgumentException>(() => updater.AppendEntries(path, [replacement]));
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(loadedUpserted),
+            ResourceTestResultManifestJsonCodec.WriteToText(store.Load(path)));
+
+        var batchUpdated = updater.UpsertBatchResult(path, CreateBatchResultCodecSample());
+        var loadedBatchUpdated = store.Load(path);
+
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(batchUpdated),
+            ResourceTestResultManifestJsonCodec.WriteToText(loadedBatchUpdated));
+        AssertEqual(4, loadedBatchUpdated.Entries.Count);
+        AssertEqual("run.batch-result.failed", loadedBatchUpdated.Entries[0].RunId.Value);
+        AssertEqual("run.batch-result.passed", loadedBatchUpdated.Entries[1].RunId.Value);
+        AssertEqual("run.manifest-index.first", loadedBatchUpdated.Entries[2].RunId.Value);
+        AssertEqual("run.manifest-index.second", loadedBatchUpdated.Entries[3].RunId.Value);
     }
     finally
     {
