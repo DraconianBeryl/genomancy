@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-15 |
-| Current implementation slice | Slice 33 - Batch-plan Godot bridge and batch-run text reports (verified); later hardening/release work is next |
+| Current implementation slice | Slice 34 - Batch-result codecs and JSON-file storage (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -95,6 +95,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-12 | Refine Slice 31 to serialized resource-test batch-run plans. | Slice 31 implementation | Adds deterministic JSON plans for multiple batch runs by embedding existing resource-test specification JSON and per-run options, without adding CLI commands, filesystem writes, binary plan codecs, or resource-pack loading. | Accepted |
 | 2026-06-15 | Refine Slice 32 to batch-plan binary codec and JSON-file storage. | Slice 32 implementation | Adds a preliminary binary envelope codec for serialized batch-run plans and an optional typed JSON-file store factory without defining CLI execution, result writes, retention, or project layout. | Accepted |
 | 2026-06-15 | Expand scope to Slice 33 batch-plan Godot bridge and batch-run text reports. | Project request to implement the next generous slice and allow scope expansion | Adds package-free Godot document import/export for serialized resource-test batch-run plans and deterministic human-readable batch-run result reports, without adding CLI commands, result-file writes, manifest persistence, or GodotSharp resources. | Accepted |
+| 2026-06-15 | Expand scope to Slice 34 batch-result codecs and JSON-file storage. | Project request to implement the next generous slice and allow scope expansion | Adds deterministic JSON and preliminary binary codecs for aggregate resource-test batch-run results, plus optional JSON-file storage, without defining CLI output layout, automatic result writes, manifest merge/update, or retention policy. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -1924,6 +1925,58 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-RTEST, REQ-SERIAL, REQ-GODOT, REQ-VALIDATE.
 
+### Slice 34 - Batch-result codecs and JSON-file storage
+
+**Status:** Verified on 2026-06-15 for the refined Slice 34 acceptance criteria. CLI commands, filesystem output layout, automatic result persistence, manifest merge/update policy, retention policy, and Godot bridge coverage for batch results remain **In progress**.
+
+**Objective:** Make aggregate resource-test batch-run outputs portable through deterministic core serialization and optional JSON-file storage while preserving the existing separation between in-memory execution and caller-owned persistence policy.
+
+**Deliverables**
+
+- Add a deterministic JSON codec for `ResourceTestBatchRunResult`.
+- Embed each per-run `ResourceTestRunResult` through the existing result JSON codec instead of duplicating case/diagnostic packet serialization.
+- Preserve run IDs, result paths, labels, UTC completion timestamps, tags, per-run result details, and generated manifest entries.
+- Validate unsupported envelope versions, malformed timestamps, missing embedded results, and aggregate status mismatches.
+- Add a preliminary binary codec for batch-run results using the shared JSON-wrapped binary envelope pattern.
+- Add an optional typed JSON-file storage factory for batch-run results in `Genomancy.Storage.JsonFile`.
+- Keep path selection, result writes, manifest persistence, retention, and merge/update policy outside core.
+
+**Acceptance criteria**
+
+- Batch-result JSON round trips preserve canonical JSON equality.
+- Batch-result binary round trips preserve canonical JSON equality.
+- Round trips preserve failed diagnostics, per-run summaries, labels, tags, normalized timestamps, and generated manifest entries.
+- Unsupported JSON envelopes, malformed timestamps, missing embedded results, aggregate status mismatches, truncated binary payloads, and wrong binary magic are rejected.
+- Batch-result JSON-file storage can save/load an aggregate result without adding storage dependencies to core.
+- Core still has no filesystem-storage dependency.
+
+**Tests**
+
+- Batch-result JSON and binary round trip test with mixed passed/failed runs.
+- Manifest-entry preservation and canonical JSON equality test.
+- Unsupported, malformed, missing-result, inconsistent-status, truncated-binary, and wrong-magic rejection tests.
+- JSON-file storage round trip for batch-run results.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `ResourceTestBatchRunResultJsonCodec`.
+- `ResourceTestBatchRunResultBinaryCodec`.
+- `ResourceTestBatchRunResultJsonFileStore.Create`.
+- Package-free implementation tests for batch-result serialization, binary envelope validation, and JSON-file storage behavior.
+
+**Implementation simplification choices**
+
+- The batch-result JSON codec embeds existing per-run result JSON payloads rather than defining a second case/diagnostic/reproducibility-packet schema.
+- The binary format remains a preliminary JSON-wrapped binary envelope, consistent with earlier serialization slices.
+- JSON-file storage persists a caller-selected aggregate result file only; it does not define output directories, naming, retention, locking, manifest persistence, or CLI behavior.
+
+**Not yet implemented**
+
+- CLI/batch command-line host, project file layout, automatic result-file writes, generated-manifest persistence, manifest merge/update workflows, retention/naming policy, compact binary batch-result schema, resource-pack references/loading, duration metrics, parallel execution, Godot batch-result bridge, GodotSharp resources, editor plugins, or Godot-side result dereferencing.
+
+**Requirements advanced:** REQ-RTEST, REQ-SERIAL, REQ-STORAGE, REQ-VALIDATE.
+
 ### Later hardening and release work
 
 - Performance profiling and bounded-allocation work for runtime hot paths.
@@ -2132,6 +2185,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - deterministic Godot document metadata from embedded system-definition versions and tags
   - deterministic text report formatter for already-materialized batch-run results
   - package lookup, kind mismatch, canonical JSON preservation, and materialized execution coverage
+- Slice 34 batch-result codecs and JSON-file storage:
+  - deterministic JSON codec for aggregate resource-test batch-run results
+  - preliminary binary codec for aggregate batch-run results
+  - optional typed JSON-file store factory for batch-run results
+  - preservation of per-run results, manifest entries, labels, tags, timestamps, and failed diagnostics
+  - malformed JSON/status mismatch and binary header/truncation validation
 
 ### Not yet implemented
 
@@ -2142,7 +2201,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, manifest merge/update workflows, result file layout, result writes, compact/final batch-plan binary schemas, and result retention/naming policy.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, manifest merge/update workflows, result file layout, result writes, compact/final batch-plan and batch-result binary schemas, and result retention/naming policy.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, manifest/result/batch-plan file dereferencing, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -2177,6 +2236,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 31 serializes batch plans with embedded resource-test JSON payloads only; it does not add external resource-pack references, binary plan codecs, JSON-file plan storage, CLI execution, result writes, or manifest update policy.
 - Slice 32 uses a preliminary JSON-wrapped binary envelope and a typed single-file JSON store for batch plans only; it does not define compact binary schemas, project layout, result writes, manifest writes, CLI execution, retention, or merge/update policy.
 - Slice 33 exposes batch plans through the package-free Godot document bridge and formats already-materialized batch results only; it does not add GodotSharp resources, editor tooling, CLI output, result writes, manifest writes, result dereferencing, retention, or merge/update policy.
+- Slice 34 serializes aggregate batch results by embedding existing per-run result JSON payloads; it does not add a compact binary schema, CLI output, automatic result writes, manifest writes, retention, merge/update policy, or Godot batch-result bridge.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -2368,6 +2428,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - Godot batch-plan metadata and combined tag ordering
   - imported Godot batch-plan execution through the batch runner
   - Godot package lookup and kind-mismatch diagnostics for batch-plan documents
+- Slice 34 package-free implementation tests in `tests/Genomancy.Tests`:
+  - aggregate batch-result JSON round trip for mixed passed/failed runs
+  - aggregate batch-result binary round trip
+  - preservation of failed diagnostics, labels, tags, timestamps, and generated manifest entries
+  - unsupported JSON envelope, malformed timestamp, missing embedded result, inconsistent aggregate status, truncated binary, and wrong binary header rejection
+  - JSON-file storage round trip for aggregate batch-run results
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -2406,13 +2472,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 31 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 32 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 33 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 34 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, and serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI host/commands, result file writes, compact/final batch-plan binary schemas, and project file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage, and serialized JSON/binary aggregate batch-run results with optional JSON-file storage. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, manifest merge/update workflows, CLI host/commands, result file writes, compact/final batch-plan or batch-result binary schemas, and project file layout do not exist yet.
 
 ### Test layers required by the project
 

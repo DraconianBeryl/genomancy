@@ -110,6 +110,8 @@ var tests = new (string Name, Action Test)[]
     ("Resource test batch JSON round trip materializes executable runs", ResourceTestBatchJsonRoundTripMaterializesExecutableRuns),
     ("Resource test batch JSON rejects unsupported and malformed plans", ResourceTestBatchJsonRejectsUnsupportedAndMalformedPlans),
     ("Resource test batch binary codec round trips and validates headers", ResourceTestBatchBinaryCodecRoundTripsAndValidatesHeaders),
+    ("Resource test batch result codecs preserve runs and manifests", ResourceTestBatchResultCodecsPreserveRunsAndManifests),
+    ("Resource test batch result JSON rejects unsupported and inconsistent results", ResourceTestBatchResultJsonRejectsUnsupportedAndInconsistentResults),
     ("Population template binary codec round trips and validates headers", PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders),
     ("Resource test binary codec round trips executable specs", ResourceTestBinaryCodecRoundTripsExecutableSpecs),
     ("Resource test result codecs preserve diagnostics and failure packets", ResourceTestResultCodecsPreserveDiagnosticsAndFailurePackets),
@@ -117,6 +119,7 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage persists resource test results outside core", JsonFileStoragePersistsResourceTestResultsOutsideCore),
     ("JSON file storage persists resource test result manifests outside core", JsonFileStoragePersistsResourceTestResultManifestsOutsideCore),
     ("JSON file storage persists resource test batch plans outside core", JsonFileStoragePersistsResourceTestBatchPlansOutsideCore),
+    ("JSON file storage persists resource test batch results outside core", JsonFileStoragePersistsResourceTestBatchResultsOutsideCore),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -2556,6 +2559,58 @@ static void ResourceTestBatchBinaryCodecRoundTripsAndValidatesHeaders()
     AssertThrows<GenomeSerializationException>(() => ResourceTestBatchRunBinaryCodec.ReadFromBuffer(resourceTestBinary));
 }
 
+static void ResourceTestBatchResultCodecsPreserveRunsAndManifests()
+{
+    var result = CreateBatchResultCodecSample();
+    var text = ResourceTestBatchRunResultJsonCodec.WriteToText(result);
+    var jsonRoundTrip = ResourceTestBatchRunResultJsonCodec.ReadFromBuffer(
+        ResourceTestBatchRunResultJsonCodec.WriteToBuffer(result));
+    var binary = ResourceTestBatchRunResultBinaryCodec.WriteToBuffer(result);
+    var binaryRoundTrip = ResourceTestBatchRunResultBinaryCodec.ReadFromBuffer(binary);
+
+    AssertEqual(ResourceTestStatus.Failed, jsonRoundTrip.Status);
+    AssertEqual(2, jsonRoundTrip.Runs.Count);
+    AssertEqual("run.batch-result.failed", jsonRoundTrip.Runs[0].RunId.Value);
+    AssertEqual(ResourceTestStatus.Failed, jsonRoundTrip.Runs[0].Result.Status);
+    AssertEqual("BATCH_RESULT_FAILURE", jsonRoundTrip.Runs[0].Result.Cases.Single().Diagnostics.Single().Code);
+    AssertEqual("Stored failed result", jsonRoundTrip.Runs[0].ManifestEntry.Label);
+    AssertEqual(TimeSpan.Zero, jsonRoundTrip.Runs[0].ManifestEntry.CompletedAtUtc?.Offset);
+    AssertTrue(
+        jsonRoundTrip.Runs[0].ManifestEntry.Tags.SequenceEqual(["batch-result", "failed"]),
+        "Batch result manifest entry tags must round trip sorted.");
+    AssertEqual("run.batch-result.passed", jsonRoundTrip.Runs[1].RunId.Value);
+    AssertEqual(ResourceTestStatus.Passed, jsonRoundTrip.Runs[1].Result.Status);
+    AssertEqual(
+        ResourceTestResultManifestJsonCodec.WriteToText(result.Manifest),
+        ResourceTestResultManifestJsonCodec.WriteToText(jsonRoundTrip.Manifest));
+    AssertEqual(text, ResourceTestBatchRunResultJsonCodec.WriteToText(jsonRoundTrip));
+    AssertEqual(text, ResourceTestBatchRunResultJsonCodec.WriteToText(binaryRoundTrip));
+    AssertThrows<GenomeSerializationException>(() => ResourceTestBatchRunResultBinaryCodec.ReadFromBuffer(binary[..4]));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunResultBinaryCodec.ReadFromBuffer(ResourceTestBatchRunBinaryCodec.WriteToBuffer([])));
+}
+
+static void ResourceTestBatchResultJsonRejectsUnsupportedAndInconsistentResults()
+{
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunResultJsonCodec.ReadFromBuffer("""{"envelopeVersion":99,"status":"Passed","runs":[]}"""u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunResultJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"status":"Passed","runs":[{"runId":"run.batch-result.bad","resultPath":"results/bad.json","completedAtUtc":"not a date","result":{"envelopeVersion":1,"status":"Passed","cases":[]}}]}
+            """u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunResultJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"status":"Passed","runs":[{"runId":"run.batch-result.bad","resultPath":"results/bad.json"}]}
+            """u8));
+    AssertThrows<GenomeSerializationException>(
+        () => ResourceTestBatchRunResultJsonCodec.ReadFromBuffer(
+            """
+            {"envelopeVersion":1,"status":"Passed","runs":[{"runId":"run.batch-result.failed","resultPath":"results/failed.json","result":{"envelopeVersion":1,"status":"Failed","cases":[{"testId":"resource-test.batch-result.failed","status":"Failed","tags":[],"diagnostics":[{"severity":"Error","code":"EXPECTED","path":"tests/expected","message":"Expected failure."}],"reproducibilityPackets":[]}]}}]}
+            """u8));
+}
+
 static void PopulationTemplateBinaryCodecRoundTripsAndValidatesHeaders()
 {
     var template = CreatePopulationTemplate("template.binary", "template.binary.v1", lightWeight: 2, darkWeight: 3);
@@ -2799,6 +2854,40 @@ static void JsonFileStoragePersistsResourceTestBatchPlansOutsideCore()
         AssertEqual(ResourceTestStatus.Passed, result.Status);
         AssertEqual("results/storage-valid.json", result.Runs.Single().ResultPath);
         AssertTrue(File.Exists(path), "Batch plan store must create the requested JSON file.");
+    }
+    finally
+    {
+        var root = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void JsonFileStoragePersistsResourceTestBatchResultsOutsideCore()
+{
+    var path = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}",
+        "resource-test-batch-result.json");
+    var result = CreateBatchResultCodecSample();
+    var store = ResourceTestBatchRunResultJsonFileStore.Create();
+
+    try
+    {
+        store.Save(path, result);
+        var loaded = store.Load(path);
+
+        AssertEqual(
+            ResourceTestBatchRunResultJsonCodec.WriteToText(result),
+            ResourceTestBatchRunResultJsonCodec.WriteToText(loaded));
+        AssertEqual(ResourceTestStatus.Failed, loaded.Status);
+        AssertEqual("results/failed.json", loaded.Manifest.Entries[0].ResultPath);
+        AssertEqual("BATCH_RESULT_FAILURE", loaded.Runs[0].Result.Cases.Single().Diagnostics.Single().Code);
+        AssertTrue(File.Exists(path), "Batch result store must create the requested JSON file.");
     }
     finally
     {
@@ -3543,6 +3632,57 @@ static ResourceTestRunResult CreateManifestSampleResult(
             status,
             diagnostics ?? [],
             tags: ["manifest"]),
+    ]);
+}
+
+static ResourceTestBatchRunResult CreateBatchResultCodecSample()
+{
+    var failed = ResourceTestRunner.Run(
+    [
+        new ResourceTestDefinition(
+            ResourceTestId.Parse("resource-test.batch-result.failed"),
+            CreateMinimalHumanBuilder,
+            [
+                new EmitDiagnosticsStep(new ResourceTestDiagnostic(
+                    ResourceTestSeverity.Error,
+                    "BATCH_RESULT_FAILURE",
+                    "tests/batch-result/failure",
+                    "Batch result failure.")),
+            ],
+            tags: ["failed"]),
+    ]);
+    var passed = ResourceTestRunner.Run(
+    [
+        CreateResourceTestSpecification(
+            "resource-test.batch-result.passed",
+            invalidGene: false,
+            tags: ["passed"]).ToDefinition(),
+    ]);
+
+    return new ResourceTestBatchRunResult(
+    [
+        new ResourceTestBatchRunRecord(
+            ResourceTestId.Parse("run.batch-result.passed"),
+            "results/passed.json",
+            passed,
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.batch-result.passed"),
+                "results/passed.json",
+                passed,
+                new DateTimeOffset(2026, 06, 15, 15, 00, 00, TimeSpan.Zero),
+                label: "Stored passed result",
+                tags: ["batch-result", "passed"])),
+        new ResourceTestBatchRunRecord(
+            ResourceTestId.Parse("run.batch-result.failed"),
+            "results/failed.json",
+            failed,
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.batch-result.failed"),
+                "results/failed.json",
+                failed,
+                new DateTimeOffset(2026, 06, 15, 14, 00, 00, TimeSpan.FromHours(-5)),
+                label: "Stored failed result",
+                tags: ["failed", "batch-result"])),
     ]);
 }
 
