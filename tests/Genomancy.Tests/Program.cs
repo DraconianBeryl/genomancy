@@ -129,6 +129,9 @@ var tests = new (string Name, Action Test)[]
     ("CLI executes passing resource test batch plans", CliExecutesPassingResourceTestBatchPlans),
     ("CLI reports failed resource test batch plans with test failure exit code", CliReportsFailedResourceTestBatchPlansWithTestFailureExitCode),
     ("CLI reports usage and manifest append errors", CliReportsUsageAndManifestAppendErrors),
+    ("CLI shows stored result and batch reports", CliShowsStoredResultAndBatchReports),
+    ("CLI shows manifests with filters and resolved paths", CliShowsManifestsWithFiltersAndResolvedPaths),
+    ("CLI updates manifests from stored batch results", CliUpdatesManifestsFromStoredBatchResults),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -3498,6 +3501,214 @@ static void CliReportsUsageAndManifestAppendErrors()
         AssertEqual((int)GenomancyCliExitCode.Success, firstExitCode);
         AssertEqual((int)GenomancyCliExitCode.ExecutionError, secondExitCode);
         AssertTrue(secondError.ToString().Contains("Batch execution failed:", StringComparison.Ordinal), secondError.ToString());
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliShowsStoredResultAndBatchReports()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var resultPath = Path.Combine(root, "results", "failed-result.json");
+    var resultReportPath = Path.Combine(root, "reports", "result-report.txt");
+    var batchResultPath = Path.Combine(root, "batch", "batch-result.json");
+    var batchReportPath = Path.Combine(root, "reports", "batch-report.txt");
+    var resultStore = ResourceTestResultJsonFileStore.Create();
+    var batchStore = ResourceTestBatchRunResultJsonFileStore.Create();
+    var batch = CreateBatchResultCodecSample();
+    var failedResult = batch.Runs.Single(run => run.RunId.Value == "run.batch-result.failed").Result;
+    var resultOutput = new StringWriter();
+    var resultError = new StringWriter();
+    var batchOutput = new StringWriter();
+    var batchError = new StringWriter();
+
+    try
+    {
+        resultStore.Save(resultPath, failedResult);
+        batchStore.Save(batchResultPath, batch);
+
+        var resultExitCode = GenomancyCli.Run(
+            [
+                "result",
+                "show",
+                "--result",
+                resultPath,
+                "--report",
+                resultReportPath,
+            ],
+            resultOutput,
+            resultError);
+        var batchExitCode = GenomancyCli.Run(
+            [
+                "batch",
+                "show",
+                "--batch-result",
+                batchResultPath,
+                "--report",
+                batchReportPath,
+            ],
+            batchOutput,
+            batchError);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, resultExitCode);
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, batchExitCode);
+        AssertEqual("", resultError.ToString());
+        AssertEqual("", batchError.ToString());
+        AssertTrue(resultOutput.ToString().Contains("Resource test run: Failed", StringComparison.Ordinal), resultOutput.ToString());
+        AssertTrue(resultOutput.ToString().Contains($"Report: {resultReportPath}", StringComparison.Ordinal), resultOutput.ToString());
+        AssertTrue(File.ReadAllText(resultReportPath).Contains("BATCH_RESULT_FAILURE", StringComparison.Ordinal), "Result report must include failed diagnostics.");
+        AssertTrue(batchOutput.ToString().Contains("Resource test batch: Failed", StringComparison.Ordinal), batchOutput.ToString());
+        AssertTrue(batchOutput.ToString().Contains("- run.batch-result.failed: Failed", StringComparison.Ordinal), batchOutput.ToString());
+        AssertTrue(File.ReadAllText(batchReportPath).Contains("Runs: 2 total, 1 passed, 1 failed", StringComparison.Ordinal), "Batch report must include aggregate counts.");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliShowsManifestsWithFiltersAndResolvedPaths()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(root, "manifests", "manifest.json");
+    var reportPath = Path.Combine(root, "reports", "manifest-report.txt");
+    var resultRootPath = Path.Combine(root, "run-results");
+    var manifest = CreateBatchResultCodecSample().Manifest;
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        ResourceTestResultManifestJsonFileStore.Create().Save(manifestPath, manifest);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "show",
+                "--manifest",
+                manifestPath,
+                "--status",
+                "failed",
+                "--tag",
+                "failed",
+                "--resolve-root",
+                resultRootPath,
+                "--report",
+                reportPath,
+            ],
+            output,
+            error);
+        var text = output.ToString();
+        var report = File.ReadAllText(reportPath);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertEqual("", error.ToString());
+        AssertTrue(text.Contains("Resource test result manifest", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains("Entries: 2 total, 1 failed", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains("Selected: 1", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains("Status filter: Failed", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains("Tag filter: failed", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains("- run.batch-result.failed: Failed path=results/failed.json", StringComparison.Ordinal), text);
+        AssertTrue(!text.Contains("- run.batch-result.passed:", StringComparison.Ordinal), text);
+        AssertTrue(text.Contains(Path.Combine(resultRootPath, "results/failed.json"), StringComparison.Ordinal), text);
+        AssertTrue(report.Contains("Label: Stored failed result", StringComparison.Ordinal), report);
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliUpdatesManifestsFromStoredBatchResults()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var batchResultPath = Path.Combine(root, "batch", "batch-result.json");
+    var manifestPath = Path.Combine(root, "manifests", "manifest.json");
+    var reportPath = Path.Combine(root, "reports", "updated-manifest.txt");
+    var batch = CreateBatchResultCodecSample();
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        ResourceTestBatchRunResultJsonFileStore.Create().Save(batchResultPath, batch);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "update",
+                "--manifest",
+                manifestPath,
+                "--from-batch-result",
+                batchResultPath,
+                "--manifest-mode",
+                "upsert",
+                "--report",
+                reportPath,
+            ],
+            output,
+            error);
+        var manifest = ResourceTestResultManifestJsonFileStore.Create().Load(manifestPath);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertEqual("", error.ToString());
+        AssertTrue(output.ToString().Contains($"Manifest: {manifestPath}", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Mode: upsert", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Entries: 2 total, 1 failed", StringComparison.Ordinal), output.ToString());
+        AssertEqual(2, manifest.Entries.Count);
+        AssertTrue(File.ReadAllText(reportPath).Contains("- run.batch-result.failed: Failed", StringComparison.Ordinal), "Manifest update report must include batch entries.");
+
+        var rerunExitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "update",
+                "--manifest",
+                manifestPath,
+                "--from-batch-result",
+                batchResultPath,
+            ],
+            new StringWriter(),
+            new StringWriter());
+        var rerunManifest = ResourceTestResultManifestJsonFileStore.Create().Load(manifestPath);
+        var appendError = new StringWriter();
+        var appendExitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "update",
+                "--manifest",
+                manifestPath,
+                "--from-batch-result",
+                batchResultPath,
+                "--manifest-mode",
+                "append",
+            ],
+            new StringWriter(),
+            appendError);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, rerunExitCode);
+        AssertEqual(2, rerunManifest.Entries.Count);
+        AssertEqual((int)GenomancyCliExitCode.ExecutionError, appendExitCode);
+        AssertTrue(appendError.ToString().Contains("Manifest update failed:", StringComparison.Ordinal), appendError.ToString());
     }
     finally
     {

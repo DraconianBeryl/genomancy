@@ -29,6 +29,34 @@ public static class GenomancyCli
             return RunBatch(args[2..], output, error);
         }
 
+        if (args.Length >= 2
+            && string.Equals(args[0], "batch", StringComparison.Ordinal)
+            && string.Equals(args[1], "show", StringComparison.Ordinal))
+        {
+            return ShowBatchResult(args[2..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "result", StringComparison.Ordinal)
+            && string.Equals(args[1], "show", StringComparison.Ordinal))
+        {
+            return ShowRunResult(args[2..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "show", StringComparison.Ordinal))
+        {
+            return ShowManifest(args[2..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "update", StringComparison.Ordinal))
+        {
+            return UpdateManifest(args[2..], output, error);
+        }
+
         error.WriteLine("Unknown command.");
         WriteUsage(error);
         return (int)GenomancyCliExitCode.UsageError;
@@ -93,6 +121,189 @@ public static class GenomancyCli
         }
     }
 
+    private static int ShowBatchResult(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteBatchShowUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        BatchShowOptions options;
+
+        try
+        {
+            options = BatchShowOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteBatchShowUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var result = ResourceTestBatchRunResultJsonFileStore.Create().Load(options.BatchResultPath);
+            var report = ResourceTestBatchRunTextReportFormatter.WriteToText(result);
+
+            output.Write(report);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, report);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return result.Status == ResourceTestStatus.Passed
+                ? (int)GenomancyCliExitCode.Success
+                : (int)GenomancyCliExitCode.TestFailure;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Batch result show failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
+    private static int ShowRunResult(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteResultShowUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ResultShowOptions options;
+
+        try
+        {
+            options = ResultShowOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteResultShowUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var result = ResourceTestResultJsonFileStore.Create().Load(options.ResultPath);
+            var report = ResourceTestTextReportFormatter.WriteToText(result);
+
+            output.Write(report);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, report);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return result.Status == ResourceTestStatus.Passed
+                ? (int)GenomancyCliExitCode.Success
+                : (int)GenomancyCliExitCode.TestFailure;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Result show failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
+    private static int ShowManifest(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestShowUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestShowOptions options;
+
+        try
+        {
+            options = ManifestShowOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestShowUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var manifest = ResourceTestResultManifestJsonFileStore.Create().Load(options.ManifestPath);
+            var text = FormatManifest(manifest, options);
+
+            output.Write(text);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, text);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return manifest.Entries.Any(entry => entry.Summary.Status == ResourceTestStatus.Failed)
+                ? (int)GenomancyCliExitCode.TestFailure
+                : (int)GenomancyCliExitCode.Success;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest show failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
+    private static int UpdateManifest(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestUpdateUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestUpdateOptions options;
+
+        try
+        {
+            options = ManifestUpdateOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestUpdateUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var batchResult = ResourceTestBatchRunResultJsonFileStore.Create().Load(options.BatchResultPath);
+            var updater = new ResourceTestResultManifestJsonFileUpdater();
+            var manifest = options.UpsertManifest
+                ? updater.UpsertBatchResult(options.ManifestPath, batchResult)
+                : updater.AppendBatchResult(options.ManifestPath, batchResult);
+
+            WriteManifestUpdateSummary(manifest, options.ManifestPath, options.UpsertManifest, output);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, FormatManifest(manifest, ManifestShowOptions.Default(options.ManifestPath)));
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return batchResult.Status == ResourceTestStatus.Passed
+                ? (int)GenomancyCliExitCode.Success
+                : (int)GenomancyCliExitCode.TestFailure;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest update failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
     private static void WriteExecutionSummary(
         ResourceTestBatchRunJsonFileExecutionResult execution,
         TextWriter output)
@@ -115,6 +326,99 @@ public static class GenomancyCli
             $"Summary: runs={summary.TotalRuns} passed={summary.PassedRuns} failed={summary.FailedRuns} cases={summary.TotalCases} diagnostics={summary.TotalDiagnostics} packets={summary.ReproducibilityPackets}");
     }
 
+    private static void WriteManifestUpdateSummary(
+        ResourceTestResultManifest manifest,
+        string manifestPath,
+        bool upsertManifest,
+        TextWriter output)
+    {
+        var failedEntries = manifest.Entries.Count(entry => entry.Summary.Status == ResourceTestStatus.Failed);
+        var mode = upsertManifest ? "upsert" : "append";
+
+        output.WriteLine($"Manifest: {manifestPath}");
+        output.WriteLine($"Mode: {mode}");
+        output.WriteLine($"Entries: {manifest.Entries.Count} total, {failedEntries} failed");
+    }
+
+    private static string FormatManifest(ResourceTestResultManifest manifest, ManifestShowOptions options)
+    {
+        var selectedEntries = manifest.Entries
+            .Where(entry => options.Status is null || entry.Summary.Status == options.Status)
+            .Where(entry => options.Tag is null || entry.Tags.Contains(options.Tag, StringComparer.Ordinal))
+            .ToArray();
+        var totalFailed = manifest.Entries.Count(entry => entry.Summary.Status == ResourceTestStatus.Failed);
+        using var writer = new StringWriter();
+
+        writer.WriteLine("Resource test result manifest");
+        writer.WriteLine($"Entries: {manifest.Entries.Count} total, {totalFailed} failed");
+        writer.WriteLine($"Selected: {selectedEntries.Length}");
+
+        if (options.Status is not null)
+        {
+            writer.WriteLine($"Status filter: {options.Status}");
+        }
+
+        if (options.Tag is not null)
+        {
+            writer.WriteLine($"Tag filter: {options.Tag}");
+        }
+
+        writer.WriteLine("Runs:");
+
+        foreach (var entry in selectedEntries)
+        {
+            var summary = entry.Summary;
+
+            writer.WriteLine(
+                $"- {entry.RunId}: {summary.Status} path={entry.ResultPath} cases={summary.TotalCases} passed={summary.PassedCases} failed={summary.FailedCases}");
+            writer.WriteLine(
+                $"  Diagnostics: {summary.TotalDiagnostics} total, {summary.ErrorDiagnostics} error, {summary.WarningDiagnostics} warning, {summary.InfoDiagnostics} info");
+            writer.WriteLine($"  Reproducibility packets: {summary.ReproducibilityPackets}");
+            writer.WriteLine($"  Completed: {FormatCompletedAt(entry.CompletedAtUtc)}");
+            writer.WriteLine($"  Label: {FormatOptional(entry.Label)}");
+            writer.WriteLine($"  Tags: {FormatTags(entry.Tags)}");
+
+            if (options.ResolveRootPath is not null)
+            {
+                writer.WriteLine($"  Resolved path: {ResolveResultPath(options.ResolveRootPath, entry.ResultPath)}");
+            }
+        }
+
+        return writer.ToString();
+    }
+
+    private static string ResolveResultPath(string rootPath, string resultPath)
+    {
+        return Path.IsPathRooted(resultPath)
+            ? resultPath
+            : Path.Combine(rootPath, resultPath);
+    }
+
+    private static string FormatCompletedAt(DateTimeOffset? completedAtUtc)
+    {
+        return completedAtUtc is null
+            ? "none"
+            : completedAtUtc.Value.ToUniversalTime().ToString("O");
+    }
+
+    private static string FormatOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "none" : value;
+    }
+
+    private static string FormatTags(IReadOnlyCollection<string> tags)
+    {
+        return tags.Count == 0 ? "none" : string.Join(", ", tags);
+    }
+
+    private static bool IsCliExecutionException(Exception exception)
+    {
+        return exception is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or InvalidOperationException;
+    }
+
     private static void WriteTextFile(string path, string text)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
@@ -131,9 +435,16 @@ public static class GenomancyCli
     {
         writer.WriteLine("Usage:");
         writer.WriteLine("  genomancy batch run --plan <path> --batch-result <path> [options]");
+        writer.WriteLine("  genomancy batch show --batch-result <path> [options]");
+        writer.WriteLine("  genomancy result show --result <path> [options]");
+        writer.WriteLine("  genomancy manifest show --manifest <path> [options]");
+        writer.WriteLine("  genomancy manifest update --manifest <path> --from-batch-result <path> [options]");
         writer.WriteLine();
         writer.WriteLine("Commands:");
         writer.WriteLine("  batch run    Execute a serialized JSON resource-test batch plan.");
+        writer.WriteLine("  batch show   Render an aggregate batch-result report.");
+        writer.WriteLine("  result show  Render an individual resource-test result report.");
+        writer.WriteLine("  manifest     Inspect or update result manifests.");
     }
 
     private static void WriteBatchUsage(TextWriter writer)
@@ -147,6 +458,46 @@ public static class GenomancyCli
         writer.WriteLine("  --run-result-root <path>      Root for relative per-run result paths.");
         writer.WriteLine("  --report <path>               Write deterministic text report.");
         writer.WriteLine("  --stdout-report               Also print deterministic text report to stdout.");
+    }
+
+    private static void WriteBatchShowUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy batch show --batch-result <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
+    }
+
+    private static void WriteResultShowUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy result show --result <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
+    }
+
+    private static void WriteManifestShowUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest show --manifest <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --status <passed|failed>      Filter manifest entries by status.");
+        writer.WriteLine("  --tag <tag>                   Filter manifest entries by tag.");
+        writer.WriteLine("  --resolve-root <path>         Print resolved file paths for relative entries.");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
+    }
+
+    private static void WriteManifestUpdateUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest update --manifest <path> --from-batch-result <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --manifest-mode <upsert|append>");
+        writer.WriteLine("  --report <path>               Write deterministic manifest report after update.");
     }
 
     private static bool IsHelp(string value)
@@ -257,5 +608,218 @@ public static class GenomancyCli
         {
             return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
+    }
+
+    private sealed record BatchShowOptions(string BatchResultPath, string? ReportPath)
+    {
+        public static BatchShowOptions Parse(IReadOnlyList<string> args)
+        {
+            string? batchResultPath = null;
+            string? reportPath = null;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--batch-result":
+                        batchResultPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(batchResultPath))
+            {
+                throw new ArgumentException("Missing required option '--batch-result'.");
+            }
+
+            return new BatchShowOptions(batchResultPath.Trim(), NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private sealed record ResultShowOptions(string ResultPath, string? ReportPath)
+    {
+        public static ResultShowOptions Parse(IReadOnlyList<string> args)
+        {
+            string? resultPath = null;
+            string? reportPath = null;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--result":
+                        resultPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(resultPath))
+            {
+                throw new ArgumentException("Missing required option '--result'.");
+            }
+
+            return new ResultShowOptions(resultPath.Trim(), NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private sealed record ManifestShowOptions(
+        string ManifestPath,
+        ResourceTestStatus? Status,
+        string? Tag,
+        string? ResolveRootPath,
+        string? ReportPath)
+    {
+        public static ManifestShowOptions Default(string manifestPath)
+        {
+            return new ManifestShowOptions(manifestPath, null, null, null, null);
+        }
+
+        public static ManifestShowOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            ResourceTestStatus? status = null;
+            string? tag = null;
+            string? resolveRootPath = null;
+            string? reportPath = null;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--status":
+                        status = ParseStatus(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--tag":
+                        tag = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--resolve-root":
+                        resolveRootPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            return new ManifestShowOptions(
+                manifestPath.Trim(),
+                status,
+                NormalizeOptionalPath(tag),
+                NormalizeOptionalPath(resolveRootPath),
+                NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private sealed record ManifestUpdateOptions(
+        string ManifestPath,
+        string BatchResultPath,
+        bool UpsertManifest,
+        string? ReportPath)
+    {
+        public static ManifestUpdateOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            string? batchResultPath = null;
+            string? reportPath = null;
+            var upsertManifest = true;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--from-batch-result":
+                        batchResultPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--manifest-mode":
+                        upsertManifest = ParseManifestMode(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(batchResultPath))
+            {
+                throw new ArgumentException("Missing required option '--from-batch-result'.");
+            }
+
+            return new ManifestUpdateOptions(
+                manifestPath.Trim(),
+                batchResultPath.Trim(),
+                upsertManifest,
+                NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private static string ReadValue(IReadOnlyList<string> args, ref int index, string option)
+    {
+        if (index + 1 >= args.Count || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Option '{option}' requires a value.");
+        }
+
+        index++;
+        return args[index];
+    }
+
+    private static bool ParseManifestMode(string value)
+    {
+        if (string.Equals(value, "upsert", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (string.Equals(value, "append", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        throw new ArgumentException("Option '--manifest-mode' must be 'upsert' or 'append'.");
+    }
+
+    private static ResourceTestStatus ParseStatus(string value)
+    {
+        if (Enum.TryParse<ResourceTestStatus>(value, ignoreCase: true, out var status))
+        {
+            return status;
+        }
+
+        throw new ArgumentException("Option '--status' must be 'passed' or 'failed'.");
+    }
+
+    private static string? NormalizeOptionalPath(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

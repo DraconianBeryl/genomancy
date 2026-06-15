@@ -34,3 +34,27 @@ dotnet run --project src/Genomancy.Cli -- batch run \
 
 Exit codes are stable: `0` success, `1` resource-test failure, `2` usage error,
 and `3` execution error.
+
+It can also inspect stored JSON artifacts and update manifests from stored batch
+results:
+
+```sh
+dotnet run --project src/Genomancy.Cli -- result show \
+  --result path/to/run-result.json \
+  --report path/to/run-report.txt
+
+dotnet run --project src/Genomancy.Cli -- batch show \
+  --batch-result path/to/batch-result.json \
+  --report path/to/batch-report.txt
+
+dotnet run --project src/Genomancy.Cli -- manifest show \
+  --manifest path/to/result-manifest.json \
+  --status failed \
+  --tag smoke \
+  --resolve-root path/to/run-results
+
+dotnet run --project src/Genomancy.Cli -- manifest update \
+  --manifest path/to/result-manifest.json \
+  --from-batch-result path/to/batch-result.json \
+  --manifest-mode upsert
+```
