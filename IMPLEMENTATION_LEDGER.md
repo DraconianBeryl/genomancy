@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-15 |
-| Current implementation slice | Slice 39 - JSON-file resource-test batch execution workflow (verified); later hardening/release work is next |
+| Current implementation slice | Slice 40 - resource-test batch CLI host (verified); later hardening/release work is next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -101,6 +101,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-15 | Expand scope to Slice 37 resource-test manifest merge/update utilities. | Project request to implement the next ambitious slice and allow planned-scope expansion | Adds deterministic in-memory manifest append and upsert helpers over existing manifests, manifest entries, and aggregate batch-run results, without defining filesystem writes, retention, CLI commands, or project layout. | Accepted |
 | 2026-06-15 | Expand scope to Slice 38 JSON-file resource-test manifest update workflow. | Project request to implement the next ambitious slice and allow planned-scope expansion | Adds optional storage-backed append/upsert operations for caller-selected JSON manifest files, without defining result-file writes, retention, CLI commands, locking, or project layout. | Accepted |
 | 2026-06-15 | Expand scope to Slice 39 JSON-file resource-test batch execution workflow. | Project request to implement the next ambitious slice and allow substantial scope expansion | Adds optional storage-backed execution of serialized JSON batch plans with individual result writes, aggregate batch-result writes, and manifest append/upsert updates, without defining CLI commands, repository discovery, retention, locking, or project layout. | Accepted |
+| 2026-06-15 | Expand scope to Slice 40 resource-test batch CLI host. | Project request to implement the next ambitious slice and allow substantial scope expansion | Adds an optional command-line host for executing serialized JSON resource-test batch plans, writing individual and aggregate result files, updating manifests, emitting deterministic text reports, and returning stable exit codes, without defining repository discovery, default project layout, retention, packaging, shell completion, or parallel execution. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -2180,7 +2181,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 39 - JSON-file resource-test batch execution workflow
 
-**Status:** Verified on 2026-06-15 for the refined Slice 39 acceptance criteria. Retention policy, CLI commands, project layout, repository discovery, cross-process locking, manifest history/conflict records, result dereferencing, and parallel execution remain **In progress**.
+**Status:** Verified on 2026-06-15 for the refined Slice 39 acceptance criteria. Retention policy, project layout, repository discovery, cross-process locking, manifest history/conflict records, result dereferencing, CLI packaging, and parallel execution remain **In progress**.
 
 **Objective:** Compose serialized batch plans, resource-test execution, individual result persistence, aggregate result persistence, and manifest update into one optional JSON-file storage workflow without moving filesystem policy into core.
 
@@ -2229,7 +2230,65 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- CLI commands, repository/project layout, automatic plan discovery, retention/naming policy, cross-process locking, multi-file transaction rollback, result dereferencing from manifests, merge conflict reports, historical manifest snapshots, parallel batch execution, or editor/Godot execution actions.
+- Repository/project layout, automatic plan discovery, retention/naming policy, cross-process locking, multi-file transaction rollback, result dereferencing from manifests, merge conflict reports, historical manifest snapshots, CLI packaging/completion, parallel batch execution, or editor/Godot execution actions.
+
+**Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-STORAGE.
+
+### Slice 40 - Resource-test batch CLI host
+
+**Status:** Verified on 2026-06-15 for the refined Slice 40 acceptance criteria. Repository discovery, default project layout, retention policy, packaged tool distribution, shell completion, result dereferencing, richer command families, and parallel execution remain **In progress**.
+
+**Objective:** Provide a package-free optional command-line host that composes the existing JSON-file batch execution workflow into a usable command while preserving the core/storage dependency boundaries.
+
+**Deliverables**
+
+- Add `Genomancy.Cli` as an optional executable project.
+- Implement `genomancy batch run` over serialized JSON batch-run plans.
+- Require explicit `--plan` and `--batch-result` paths.
+- Support optional `--manifest`, `--manifest-mode upsert|append`, and `--run-result-root`.
+- Support deterministic human-readable batch report output to `--report` and optional `--stdout-report`.
+- Return stable exit codes for success, test failures, usage errors, and execution errors.
+- Keep the CLI reusable from tests through an injectable output/error writer entry point.
+- Include the CLI in solution build and implementation verification.
+
+**Acceptance criteria**
+
+- A passing stored batch plan executes from CLI arguments and writes individual run results, aggregate batch result, manifest, and text report files.
+- CLI stdout includes deterministic status, paths, written result count, and aggregate summary.
+- `--stdout-report` prints the existing deterministic batch text report.
+- A failing stored batch plan still writes outputs and returns the test-failure exit code.
+- Missing/invalid arguments return the usage-error exit code and render usage help.
+- Strict manifest append conflicts return the execution-error exit code.
+- The CLI project does not add Godot, test-framework, or third-party command-line dependencies.
+
+**Tests**
+
+- CLI execution of a passing serialized batch plan with manifest, run-result root, report file, and stdout report.
+- CLI execution of a failing serialized batch plan with test-failure exit code and written output files.
+- CLI usage-error handling for a missing required option value.
+- CLI strict append duplicate handling as execution error.
+- Full build/test verification through `scripts/verify.sh`.
+
+**Implemented**
+
+- `Genomancy.Cli` executable project.
+- `GenomancyCli` reusable command runner with injectable output/error writers.
+- `GenomancyCliExitCode` stable exit-code enum.
+- `batch run` command that delegates to `ResourceTestBatchRunJsonFileWorkflow`.
+- Deterministic execution summary and optional report file/stdout rendering.
+- Package-free implementation tests for CLI success, failed tests, usage errors, and append conflicts.
+- README and architecture notes for the optional CLI boundary.
+
+**Implementation simplification choices**
+
+- Command parsing is intentionally local and minimal; no third-party command-line parser is added.
+- The CLI exposes only serialized JSON resource-test batch execution. It does not create plans, inspect manifests, dereference stored results, or run arbitrary resource packs.
+- All output locations are explicit arguments or the existing workflow default beside the plan; no repository discovery or default project layout is inferred.
+- Exit codes distinguish usage, execution, and resource-test failure, but no machine-readable CLI event stream is defined yet.
+
+**Not yet implemented**
+
+- Packaged global/local .NET tool metadata, shell completion, command aliases, environment-variable defaults, repository discovery, default output layout, retention/naming policy, result dereferencing/list/show commands, standalone manifest commands, plan-generation commands, resource-pack discovery, parallel execution, cross-process locking, multi-file rollback, CI annotations, or editor/Godot command invocation.
 
 **Requirements advanced:** REQ-RTEST, REQ-VALIDATE, REQ-STORAGE.
 
@@ -2474,6 +2533,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - persisted aggregate batch-run results
   - manifest append/upsert integration for executed batch results
   - explicit result-root resolution for relative per-run result paths
+- Slice 40 resource-test batch CLI host:
+  - optional `Genomancy.Cli` executable project
+  - `batch run` command for serialized JSON batch-run plans
+  - explicit output paths for aggregate batch results, optional manifests, per-run result roots, and text reports
+  - stable exit codes for success, resource-test failure, usage error, and execution error
+  - deterministic stdout summary and optional batch text report emission
 
 ### Not yet implemented
 
@@ -2484,7 +2549,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI host/commands, editor integration, manifest retention/naming policy, project result-file layout, compact/final batch-plan and batch-result binary schemas, and cross-process storage concurrency controls.
+- Resource-pack loading, serialized operation/assertion registries beyond validation/freeze/assertions and the Slice 17 population-template frequency assertion, snapshots, fuzz/matrix execution, broader statistical assertions, validation reachability/policy coverage assertions, runtime-safe subset handling, CLI commands beyond batch-plan execution, CLI packaging/completion, editor integration, manifest retention/naming policy, project result-file layout, compact/final batch-plan and batch-result binary schemas, and cross-process storage concurrency controls.
 - Compact final binary schemas, remaining model codecs, custom binary-file storage, SQLite storage/provider selection, schema migrations, resource-pack manifests, and storage concurrency controls.
 - GodotSharp `Resource` subclasses, editor plugins, Godot addon layout, `.tres`/`.res` export, runtime node helpers, binary Godot import/export, manifest/result/batch-plan file dereferencing, persistence policy, and Godot engine-version matrices.
 - Reproduction/transmission distribution simulation, template-group aggregate reports, multi-generation simulation, confidence/outlier statistical policies, and broader serialized statistical resource-test steps.
@@ -2524,7 +2589,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 36 derives batch summaries from materialized in-memory results only; it does not serialize standalone summary resources, track durations, define CLI status output, or add retention/merge policy.
 - Slice 37 merges and upserts materialized in-memory manifests only; it does not load/save manifests, write result files, define retention/project layout policy, expose CLI commands, or record merge conflict history.
 - Slice 38 updates one caller-selected manifest JSON file at a time; it does not write result files, define output directories, define retention/project layout policy, expose CLI commands, provide cross-process locking, or record merge conflict history.
-- Slice 39 executes one caller-selected batch plan at a time and writes caller-routed JSON outputs; it does not define repository discovery, default output layout, retention policy, CLI commands, cross-process locking, multi-file rollback, or parallel execution.
+- Slice 39 executes one caller-selected batch plan at a time and writes caller-routed JSON outputs; it does not define repository discovery, default output layout, retention policy, CLI packaging, cross-process locking, multi-file rollback, or parallel execution.
+- Slice 40 exposes only a minimal local parser for JSON batch-plan execution; it does not add a third-party command-line package, packaged tool metadata, shell completion, repository discovery, default output layout, result dereferencing commands, plan-generation commands, or machine-readable CLI event streams.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; reproduction/transmission statistical tolerance coverage remains deferred after Slice 16's first template-simulation layer.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -2749,6 +2815,12 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
   - nested relative run-result path directory creation under an explicit output root
   - aggregate batch-result canonical reload
   - manifest upsert rerun behavior and strict append duplicate rejection
+- Slice 40 package-free implementation tests in `tests/Genomancy.Tests`:
+  - CLI execution of a passing stored batch plan with run-result, aggregate, manifest, and report writes
+  - deterministic CLI stdout summary and optional stdout batch report
+  - CLI execution of a failing stored batch plan with test-failure exit code
+  - CLI usage error for missing option value
+  - CLI strict manifest append conflict as execution error
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -2793,13 +2865,14 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Slice 37 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 38 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 39 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 40 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered for the core-boundary requirement and the package-free adapter assembly; GodotSharp resource subclasses/editor plugins remain unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-RTEST, REQ-SERIAL, REQ-STORAGE, and REQ-GODOT have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
 ### Requirements without tests
 
 - Requirement families not listed under partial coverage above remain without implementation tests.
-- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory manifest merge/upsert helpers, optional JSON-file manifest append/upsert workflows, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, derived aggregate batch-run summaries, serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage, serialized JSON/binary aggregate batch-run results with optional JSON-file storage, and an optional JSON-file workflow that executes stored batch plans while writing individual results, aggregate results, and manifest updates. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, resource-test-batch-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, CLI host/commands, compact/final batch-plan or batch-result binary schemas, standalone summary resources, cross-process storage concurrency controls, and project file layout do not exist yet.
+- Serialized designer-authored resource-test files can now be represented as JSON buffers/text, including the Slice 17 population-template frequency assertion. Resource-test run results can now be represented as JSON/binary buffers, deterministic human-readable text reports, optional JSON files through `Genomancy.Storage.JsonFile`, derived in-memory summaries, serialized result manifests with opaque stored-result paths, deterministic in-memory manifest merge/upsert helpers, optional JSON-file manifest append/upsert workflows, deterministic in-memory batch-run outputs with generated manifests, deterministic batch-run text reports, derived aggregate batch-run summaries, serialized JSON/binary batch-run plans with embedded resource-test specifications and optional JSON-file storage, serialized JSON/binary aggregate batch-run results with optional JSON-file storage, an optional JSON-file workflow that executes stored batch plans while writing individual results, aggregate results, and manifest updates, and an optional CLI host command for executing those stored batch plans. Population template groups can now be represented as JSON/binary buffers with embedded templates/child groups. Runtime body-plan variants can now be represented as JSON/binary buffers. Standalone mosaic genome state can now be represented as JSON/binary buffers. The package-free Godot adapter can bridge genome, mosaic-genome, population-template, population-template-group, resource-test, resource-test-batch-plan, resource-test-result, resource-test-batch-result, and resource-test-result-manifest JSON documents. Repository-level resource-pack loading, result retention policy, CLI commands beyond batch-plan execution, CLI packaging/completion, compact/final batch-plan or batch-result binary schemas, standalone summary resources, cross-process storage concurrency controls, and project file layout do not exist yet.
 
 ### Test layers required by the project
 

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Genomancy.Core\Genomancy.Core.csproj" />
+    <ProjectReference Include="..\Genomancy.Storage.JsonFile\Genomancy.Storage.JsonFile.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+</Project>

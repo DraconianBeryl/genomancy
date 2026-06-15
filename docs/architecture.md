@@ -25,6 +25,12 @@ Implemented optional boundaries:
   storage-backed batch execution workflow that loads caller-selected batch
   plans, writes individual and aggregate result files, and optionally updates a
   caller-selected manifest.
+- `Genomancy.Cli` depends on `Genomancy.Core` and
+  `Genomancy.Storage.JsonFile` and provides an optional command-line host for
+  executing serialized JSON resource-test batch plans. It delegates domain and
+  persistence behavior to the core and storage modules, writes deterministic
+  text summaries/reports, and returns stable process exit codes for success,
+  resource-test failures, usage errors, and execution errors.
 
 The following boundaries are reserved for later slices:
 
@@ -38,6 +44,8 @@ Allowed dependencies:
 
 - Optional adapters depend on `Genomancy.Core`.
 - Optional storage modules depend on `Genomancy.Core`.
+- Optional command-line hosts depend on `Genomancy.Core` and optional storage
+  modules.
 - Resource testing tools depend on `Genomancy.Core`.
 - Implementation tests depend on `Genomancy.Core` and optional modules under
   test.

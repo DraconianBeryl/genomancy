@@ -1,4 +1,5 @@
 using System.Reflection;
+using Genomancy.Cli;
 using Genomancy.Core.Compatibility;
 using Genomancy.Core;
 using Genomancy.Core.Definitions;
@@ -125,6 +126,9 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage persists resource test batch plans outside core", JsonFileStoragePersistsResourceTestBatchPlansOutsideCore),
     ("JSON file storage persists resource test batch results outside core", JsonFileStoragePersistsResourceTestBatchResultsOutsideCore),
     ("JSON file storage executes resource test batch plans outside core", JsonFileStorageExecutesResourceTestBatchPlansOutsideCore),
+    ("CLI executes passing resource test batch plans", CliExecutesPassingResourceTestBatchPlans),
+    ("CLI reports failed resource test batch plans with test failure exit code", CliReportsFailedResourceTestBatchPlansWithTestFailureExitCode),
+    ("CLI reports usage and manifest append errors", CliReportsUsageAndManifestAppendErrors),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -3272,6 +3276,228 @@ static void JsonFileStorageExecutesResourceTestBatchPlansOutsideCore()
                 batchResultPath,
                 manifestPath,
                 runResultRootPath));
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliExecutesPassingResourceTestBatchPlans()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var planPath = Path.Combine(root, "plans", "batch-plan.json");
+    var runResultRootPath = Path.Combine(root, "run-results");
+    var batchResultPath = Path.Combine(root, "batch-results", "batch-result.json");
+    var manifestPath = Path.Combine(root, "manifests", "manifest.json");
+    var reportPath = Path.Combine(root, "reports", "batch-report.txt");
+    var plan = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.cli.passing"),
+            "passing.json",
+            [
+                CreateResourceTestSpecification(
+                    "resource-test.cli.passing",
+                    invalidGene: false,
+                    tags: ["cli", "fast"]),
+            ],
+            new ResourceTestRunOptions(includeTags: ["fast"]),
+            new DateTimeOffset(2026, 06, 15, 16, 00, 00, TimeSpan.Zero),
+            label: "CLI passing run",
+            tags: ["cli"]),
+    };
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        ResourceTestBatchRunJsonFileStore.Create().Save(planPath, plan);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "batch",
+                "run",
+                "--plan",
+                planPath,
+                "--batch-result",
+                batchResultPath,
+                "--manifest",
+                manifestPath,
+                "--run-result-root",
+                runResultRootPath,
+                "--report",
+                reportPath,
+                "--stdout-report",
+            ],
+            output,
+            error);
+        var batchResult = ResourceTestBatchRunResultJsonFileStore.Create().Load(batchResultPath);
+        var manifest = ResourceTestResultManifestJsonFileStore.Create().Load(manifestPath);
+        var runResult = ResourceTestResultJsonFileStore.Create().Load(Path.Combine(runResultRootPath, "passing.json"));
+        var stdout = output.ToString();
+        var report = File.ReadAllText(reportPath);
+
+        AssertEqual((int)GenomancyCliExitCode.Success, exitCode);
+        AssertEqual("", error.ToString());
+        AssertEqual(ResourceTestStatus.Passed, batchResult.Status);
+        AssertEqual(ResourceTestStatus.Passed, runResult.Status);
+        AssertEqual("run.cli.passing", manifest.Entries.Single().RunId.Value);
+        AssertTrue(stdout.Contains($"Batch result: {batchResultPath}", StringComparison.Ordinal), stdout);
+        AssertTrue(stdout.Contains("Run results: 1", StringComparison.Ordinal), stdout);
+        AssertTrue(stdout.Contains($"Manifest: {manifestPath}", StringComparison.Ordinal), stdout);
+        AssertTrue(stdout.Contains($"Report: {reportPath}", StringComparison.Ordinal), stdout);
+        AssertTrue(stdout.Contains("Resource test batch: Passed", StringComparison.Ordinal), stdout);
+        AssertTrue(report.Contains("- run.cli.passing: Passed path=passing.json cases=1 passed=1 failed=0", StringComparison.Ordinal), report);
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliReportsFailedResourceTestBatchPlansWithTestFailureExitCode()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var planPath = Path.Combine(root, "plans", "batch-plan.json");
+    var batchResultPath = Path.Combine(root, "batch-results", "batch-result.json");
+    var failing = new ResourceTestSpecification(
+        ResourceTestId.Parse("resource-test.cli.failed"),
+        TestVersion(),
+        CreateResourceTestFixture(invalidGene: false),
+        [
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ValidateSystemDefinitionKind),
+            new ResourceTestStepSpecification(ResourceTestStepSpecification.ExpectValidationResultKind, expectedValid: false),
+        ],
+        displayName: "resource-test.cli.failed",
+        tags: ["cli", "negative"]);
+    var plan = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.cli.failed"),
+            "failed.json",
+            [failing],
+            tags: ["cli", "negative"]),
+    };
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        ResourceTestBatchRunJsonFileStore.Create().Save(planPath, plan);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "batch",
+                "run",
+                "--plan",
+                planPath,
+                "--batch-result",
+                batchResultPath,
+            ],
+            output,
+            error);
+        var batchResult = ResourceTestBatchRunResultJsonFileStore.Create().Load(batchResultPath);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertEqual("", error.ToString());
+        AssertEqual(ResourceTestStatus.Failed, batchResult.Status);
+        AssertTrue(output.ToString().Contains("Status: Failed", StringComparison.Ordinal), output.ToString());
+        AssertTrue(File.Exists(Path.Combine(Path.GetDirectoryName(planPath) ?? root, "failed.json")), "CLI must write run results beside the plan when no root is supplied.");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliReportsUsageAndManifestAppendErrors()
+{
+    var usageOutput = new StringWriter();
+    var usageError = new StringWriter();
+    var usageExitCode = GenomancyCli.Run(
+        ["batch", "run", "--plan"],
+        usageOutput,
+        usageError);
+
+    AssertEqual((int)GenomancyCliExitCode.UsageError, usageExitCode);
+    AssertTrue(usageError.ToString().Contains("Option '--plan' requires a value.", StringComparison.Ordinal), usageError.ToString());
+
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var planPath = Path.Combine(root, "plans", "batch-plan.json");
+    var batchResultPath = Path.Combine(root, "batch-results", "batch-result.json");
+    var manifestPath = Path.Combine(root, "manifests", "manifest.json");
+    var plan = new[]
+    {
+        new ResourceTestBatchRunSpecification(
+            ResourceTestId.Parse("run.cli.append"),
+            "append.json",
+            [
+                CreateResourceTestSpecification(
+                    "resource-test.cli.append",
+                    invalidGene: false,
+                    tags: ["cli"]),
+            ],
+            tags: ["cli"]),
+    };
+
+    try
+    {
+        ResourceTestBatchRunJsonFileStore.Create().Save(planPath, plan);
+
+        var firstExitCode = GenomancyCli.Run(
+            [
+                "batch",
+                "run",
+                "--plan",
+                planPath,
+                "--batch-result",
+                batchResultPath,
+                "--manifest",
+                manifestPath,
+                "--manifest-mode",
+                "append",
+            ],
+            new StringWriter(),
+            new StringWriter());
+        var secondError = new StringWriter();
+        var secondExitCode = GenomancyCli.Run(
+            [
+                "batch",
+                "run",
+                "--plan",
+                planPath,
+                "--batch-result",
+                batchResultPath,
+                "--manifest",
+                manifestPath,
+                "--manifest-mode",
+                "append",
+            ],
+            new StringWriter(),
+            secondError);
+
+        AssertEqual((int)GenomancyCliExitCode.Success, firstExitCode);
+        AssertEqual((int)GenomancyCliExitCode.ExecutionError, secondExitCode);
+        AssertTrue(secondError.ToString().Contains("Batch execution failed:", StringComparison.Ordinal), secondError.ToString());
     }
     finally
     {
