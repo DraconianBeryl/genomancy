@@ -104,6 +104,8 @@ var tests = new (string Name, Action Test)[]
     ("Resource test run summary counts statuses diagnostics and packets", ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets),
     ("Resource test result manifest summarizes and orders entries", ResourceTestResultManifestSummarizesAndOrdersEntries),
     ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
+    ("Resource test result manifest merger appends and rejects duplicate incoming ids", ResourceTestResultManifestMergerAppendsAndRejectsDuplicateIncomingIds),
+    ("Resource test result manifest merger upserts batch result entries", ResourceTestResultManifestMergerUpsertsBatchResultEntries),
     ("Resource test batch runner executes runs and builds manifest", ResourceTestBatchRunnerExecutesRunsAndBuildsManifest),
     ("Resource test batch runner respects options and rejects duplicate run ids", ResourceTestBatchRunnerRespectsOptionsAndRejectsDuplicateRunIds),
     ("Resource test batch text report summarizes runs and manifest", ResourceTestBatchTextReportSummarizesRunsAndManifest),
@@ -2312,6 +2314,153 @@ static void ResourceTestResultManifestJsonRoundTripsAndValidates()
             """
             {"envelopeVersion":1,"entries":[{"runId":"run.bad","resultPath":"results/bad.json","completedAtUtc":"not a date","summary":{"status":"Passed","totalCases":0,"passedCases":0,"failedCases":0,"totalDiagnostics":0,"errorDiagnostics":0,"warningDiagnostics":0,"infoDiagnostics":0,"reproducibilityPackets":0}}]}
             """u8));
+}
+
+static void ResourceTestResultManifestMergerAppendsAndRejectsDuplicateIncomingIds()
+{
+    var existing = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-merge.a"),
+            "results/a.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.manifest-merge.a"),
+                ResourceTestStatus.Passed),
+            tags: ["existing"]),
+    ]);
+    var incoming = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-merge.c"),
+            "results/c.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.manifest-merge.c"),
+                ResourceTestStatus.Passed),
+            tags: ["incoming"]),
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-merge.b"),
+            "results/b.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.manifest-merge.b"),
+                ResourceTestStatus.Failed,
+                [
+                    new ResourceTestDiagnostic(
+                        ResourceTestSeverity.Error,
+                        "MANIFEST_MERGE_ERROR",
+                        "tests/manifest-merge/error",
+                        "Merge failure."),
+                ]),
+            new DateTimeOffset(2026, 06, 15, 16, 00, 00, TimeSpan.FromHours(-5)),
+            label: "Incoming failed run",
+            tags: ["incoming", "failed"]),
+    ]);
+
+    var merged = ResourceTestResultManifestMerger.Merge(existing, incoming);
+
+    AssertEqual(3, merged.Entries.Count);
+    AssertEqual("run.manifest-merge.a", merged.Entries[0].RunId.Value);
+    AssertEqual("run.manifest-merge.b", merged.Entries[1].RunId.Value);
+    AssertEqual("run.manifest-merge.c", merged.Entries[2].RunId.Value);
+    AssertEqual(ResourceTestStatus.Failed, merged.Entries[1].Summary.Status);
+    AssertEqual(TimeSpan.Zero, merged.Entries[1].CompletedAtUtc?.Offset);
+    AssertEqual(21, merged.Entries[1].CompletedAtUtc?.Hour);
+    AssertTrue(
+        merged.Entries[1].Tags.SequenceEqual(["failed", "incoming"]),
+        "Merged entries must retain normalized metadata.");
+    AssertThrows<ArgumentException>(() => ResourceTestResultManifestMerger.Merge(
+        existing,
+        new[]
+        {
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.manifest-merge.dup"),
+                "results/dup-1.json",
+                CreateManifestSampleResult(
+                    ResourceTestId.Parse("resource-test.manifest-merge.dup-1"),
+                    ResourceTestStatus.Passed)),
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.manifest-merge.dup"),
+                "results/dup-2.json",
+                CreateManifestSampleResult(
+                    ResourceTestId.Parse("resource-test.manifest-merge.dup-2"),
+                    ResourceTestStatus.Passed)),
+        }));
+    AssertThrows<ArgumentException>(() => ResourceTestResultManifestMerger.Merge(
+        existing,
+        new[]
+        {
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.manifest-merge.a"),
+                "results/replacement.json",
+                CreateManifestSampleResult(
+                    ResourceTestId.Parse("resource-test.manifest-merge.replacement"),
+                    ResourceTestStatus.Passed)),
+        }));
+}
+
+static void ResourceTestResultManifestMergerUpsertsBatchResultEntries()
+{
+    var existingFailed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest-upsert.failed-old"),
+        ResourceTestStatus.Failed,
+        [
+            new ResourceTestDiagnostic(
+                ResourceTestSeverity.Error,
+                "OLD_FAILURE",
+                "tests/manifest-upsert/old",
+                "Old failure."),
+        ]);
+    var existing = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.batch-result.failed"),
+            "results/old-failed.json",
+            existingFailed,
+            label: "Old failed result",
+            tags: ["old"]),
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-upsert.keep"),
+            "results/keep.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.manifest-upsert.keep"),
+                ResourceTestStatus.Passed),
+            tags: ["keep"]),
+    ]);
+    var batch = CreateBatchResultCodecSample();
+
+    var upserted = ResourceTestResultManifestMerger.Upsert(existing, batch);
+
+    AssertEqual(3, upserted.Entries.Count);
+    AssertEqual("run.batch-result.failed", upserted.Entries[0].RunId.Value);
+    AssertEqual("results/failed.json", upserted.Entries[0].ResultPath);
+    AssertEqual("Stored failed result", upserted.Entries[0].Label);
+    AssertEqual(1, upserted.Entries[0].Summary.ErrorDiagnostics);
+    AssertTrue(
+        upserted.Entries[0].Tags.SequenceEqual(["batch-result", "failed"]),
+        "Upsert must replace stale entry metadata with the incoming batch result entry.");
+    AssertEqual("run.batch-result.passed", upserted.Entries[1].RunId.Value);
+    AssertEqual("run.manifest-upsert.keep", upserted.Entries[2].RunId.Value);
+
+    var repeated = ResourceTestResultManifestMerger.Upsert(
+        existing,
+        new[]
+        {
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.manifest-upsert.repeat"),
+                "results/repeat-old.json",
+                CreateManifestSampleResult(
+                    ResourceTestId.Parse("resource-test.manifest-upsert.repeat-old"),
+                    ResourceTestStatus.Passed)),
+            ResourceTestResultManifestEntry.FromResult(
+                ResourceTestId.Parse("run.manifest-upsert.repeat"),
+                "results/repeat-new.json",
+                CreateManifestSampleResult(
+                    ResourceTestId.Parse("resource-test.manifest-upsert.repeat-new"),
+                    ResourceTestStatus.Passed),
+                label: "Latest repeat"),
+        });
+
+    AssertEqual("results/repeat-new.json", repeated.Entries.Single(entry => entry.RunId.Value == "run.manifest-upsert.repeat").ResultPath);
+    AssertEqual("Latest repeat", repeated.Entries.Single(entry => entry.RunId.Value == "run.manifest-upsert.repeat").Label);
 }
 
 static void ResourceTestBatchRunnerExecutesRunsAndBuildsManifest()
