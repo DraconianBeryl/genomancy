@@ -57,4 +57,14 @@ dotnet run --project src/Genomancy.Cli -- manifest update \
   --manifest path/to/result-manifest.json \
   --from-batch-result path/to/batch-result.json \
   --manifest-mode upsert
+
+dotnet run --project src/Genomancy.Cli -- manifest result show \
+  --manifest path/to/result-manifest.json \
+  --run-id run.smoke \
+  --result-root path/to/run-results
+
+dotnet run --project src/Genomancy.Cli -- manifest verify \
+  --manifest path/to/result-manifest.json \
+  --result-root path/to/run-results \
+  --status failed
 ```

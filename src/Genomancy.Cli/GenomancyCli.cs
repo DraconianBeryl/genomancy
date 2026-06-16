@@ -50,6 +50,21 @@ public static class GenomancyCli
             return ShowManifest(args[2..], output, error);
         }
 
+        if (args.Length >= 3
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "result", StringComparison.Ordinal)
+            && string.Equals(args[2], "show", StringComparison.Ordinal))
+        {
+            return ShowManifestResult(args[3..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "verify", StringComparison.Ordinal))
+        {
+            return VerifyManifest(args[2..], output, error);
+        }
+
         if (args.Length >= 2
             && string.Equals(args[0], "manifest", StringComparison.Ordinal)
             && string.Equals(args[1], "update", StringComparison.Ordinal))
@@ -304,6 +319,114 @@ public static class GenomancyCli
         }
     }
 
+    private static int ShowManifestResult(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestResultShowUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestResultShowOptions options;
+
+        try
+        {
+            options = ManifestResultShowOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestResultShowUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var manifest = ResourceTestResultManifestJsonFileStore.Create().Load(options.ManifestPath);
+            var entry = FindManifestEntry(manifest, options.RunId);
+            var resultPath = ResolveResultPath(options.ResultRootPath, entry.ResultPath);
+            var result = ResourceTestResultJsonFileStore.Create().Load(resultPath);
+            var summaryDiagnostics = CompareSummaries(entry.Summary, ResourceTestRunSummary.FromResult(result)).ToArray();
+
+            if (summaryDiagnostics.Length > 0 && options.RequireSummaryMatch)
+            {
+                throw new InvalidOperationException(
+                    $"Manifest entry '{entry.RunId}' does not match loaded result summary: {string.Join("; ", summaryDiagnostics)}.");
+            }
+
+            var report = FormatManifestResult(entry, resultPath, result, summaryDiagnostics);
+
+            output.Write(report);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, report);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return result.Status == ResourceTestStatus.Passed
+                ? (int)GenomancyCliExitCode.Success
+                : (int)GenomancyCliExitCode.TestFailure;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest result show failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
+    private static int VerifyManifest(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestVerifyUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestVerifyOptions options;
+
+        try
+        {
+            options = ManifestVerifyOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestVerifyUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var manifest = ResourceTestResultManifestJsonFileStore.Create().Load(options.ManifestPath);
+            var checks = VerifyManifestEntries(manifest, options).ToArray();
+            var text = FormatManifestVerification(checks, options);
+
+            output.Write(text);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, text);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            if (checks.Any(check => check.Status == ManifestVerificationStatus.Missing
+                    || check.Status == ManifestVerificationStatus.Mismatched))
+            {
+                return (int)GenomancyCliExitCode.ExecutionError;
+            }
+
+            return checks.Any(check => check.ResultStatus == ResourceTestStatus.Failed)
+                ? (int)GenomancyCliExitCode.TestFailure
+                : (int)GenomancyCliExitCode.Success;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest verify failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
     private static void WriteExecutionSummary(
         ResourceTestBatchRunJsonFileExecutionResult execution,
         TextWriter output)
@@ -387,6 +510,177 @@ public static class GenomancyCli
         return writer.ToString();
     }
 
+    private static string FormatManifestResult(
+        ResourceTestResultManifestEntry entry,
+        string resolvedPath,
+        ResourceTestRunResult result,
+        IReadOnlyCollection<string> summaryDiagnostics)
+    {
+        using var writer = new StringWriter();
+
+        writer.WriteLine("Manifest result");
+        writer.WriteLine($"Run: {entry.RunId}");
+        writer.WriteLine($"Manifest path: {entry.ResultPath}");
+        writer.WriteLine($"Resolved path: {resolvedPath}");
+        writer.WriteLine($"Completed: {FormatCompletedAt(entry.CompletedAtUtc)}");
+        writer.WriteLine($"Label: {FormatOptional(entry.Label)}");
+        writer.WriteLine($"Tags: {FormatTags(entry.Tags)}");
+        writer.WriteLine(summaryDiagnostics.Count == 0
+            ? "Summary check: matched"
+            : $"Summary check: mismatched ({string.Join("; ", summaryDiagnostics)})");
+        writer.Write(ResourceTestTextReportFormatter.WriteToText(result));
+
+        return writer.ToString();
+    }
+
+    private static IEnumerable<ManifestVerificationCheck> VerifyManifestEntries(
+        ResourceTestResultManifest manifest,
+        ManifestVerifyOptions options)
+    {
+        var entries = manifest.Entries
+            .Where(entry => options.Status is null || entry.Summary.Status == options.Status)
+            .Where(entry => options.Tag is null || entry.Tags.Contains(options.Tag, StringComparer.Ordinal))
+            .ToArray();
+        var resultStore = ResourceTestResultJsonFileStore.Create();
+
+        foreach (var entry in entries)
+        {
+            var resolvedPath = ResolveResultPath(options.ResultRootPath, entry.ResultPath);
+
+            if (!File.Exists(resolvedPath))
+            {
+                yield return new ManifestVerificationCheck(
+                    entry,
+                    resolvedPath,
+                    ManifestVerificationStatus.Missing,
+                    null,
+                    ["Result file does not exist."]);
+                continue;
+            }
+
+            ResourceTestRunResult? result = null;
+            string? loadDiagnostic = null;
+
+            try
+            {
+                result = resultStore.Load(resolvedPath);
+            }
+            catch (Exception exception) when (IsCliExecutionException(exception))
+            {
+                loadDiagnostic = exception.Message;
+            }
+
+            if (loadDiagnostic is not null)
+            {
+                yield return new ManifestVerificationCheck(
+                    entry,
+                    resolvedPath,
+                    ManifestVerificationStatus.Mismatched,
+                    null,
+                    [$"Result file could not be loaded: {loadDiagnostic}"]);
+                continue;
+            }
+
+            if (result is null)
+            {
+                throw new InvalidOperationException("Result file load returned no result.");
+            }
+
+            var resultSummary = ResourceTestRunSummary.FromResult(result);
+            var diagnostics = CompareSummaries(entry.Summary, resultSummary).ToArray();
+
+            yield return new ManifestVerificationCheck(
+                entry,
+                resolvedPath,
+                diagnostics.Length == 0 ? ManifestVerificationStatus.Verified : ManifestVerificationStatus.Mismatched,
+                result.Status,
+                diagnostics);
+        }
+    }
+
+    private static string FormatManifestVerification(
+        IReadOnlyCollection<ManifestVerificationCheck> checks,
+        ManifestVerifyOptions options)
+    {
+        using var writer = new StringWriter();
+        var verified = checks.Count(check => check.Status == ManifestVerificationStatus.Verified);
+        var missing = checks.Count(check => check.Status == ManifestVerificationStatus.Missing);
+        var mismatched = checks.Count(check => check.Status == ManifestVerificationStatus.Mismatched);
+        var failedResults = checks.Count(check => check.ResultStatus == ResourceTestStatus.Failed);
+
+        writer.WriteLine("Resource test result manifest verification");
+        writer.WriteLine($"Manifest: {options.ManifestPath}");
+        writer.WriteLine($"Result root: {options.ResultRootPath}");
+        writer.WriteLine($"Entries: {checks.Count} selected, {verified} verified, {missing} missing, {mismatched} mismatched, {failedResults} failed results");
+
+        if (options.Status is not null)
+        {
+            writer.WriteLine($"Status filter: {options.Status}");
+        }
+
+        if (options.Tag is not null)
+        {
+            writer.WriteLine($"Tag filter: {options.Tag}");
+        }
+
+        writer.WriteLine("Runs:");
+
+        foreach (var check in checks.OrderBy(check => check.Entry.RunId))
+        {
+            writer.WriteLine(
+                $"- {check.Entry.RunId}: {check.Status} manifestStatus={check.Entry.Summary.Status} resultStatus={FormatResultStatus(check.ResultStatus)} path={check.ResolvedPath}");
+
+            if (check.Diagnostics.Count == 0)
+            {
+                writer.WriteLine("  Diagnostics: none");
+            }
+            else
+            {
+                writer.WriteLine($"  Diagnostics: {string.Join("; ", check.Diagnostics)}");
+            }
+        }
+
+        return writer.ToString();
+    }
+
+    private static ResourceTestResultManifestEntry FindManifestEntry(
+        ResourceTestResultManifest manifest,
+        ResourceTestId runId)
+    {
+        return manifest.Entries.SingleOrDefault(entry => entry.RunId == runId)
+            ?? throw new InvalidOperationException($"Manifest does not contain run id '{runId}'.");
+    }
+
+    private static IEnumerable<string> CompareSummaries(
+        ResourceTestRunSummary manifestSummary,
+        ResourceTestRunSummary resultSummary)
+    {
+        if (manifestSummary.Status != resultSummary.Status)
+        {
+            yield return $"status manifest={manifestSummary.Status} result={resultSummary.Status}";
+        }
+
+        if (manifestSummary.TotalCases != resultSummary.TotalCases
+            || manifestSummary.PassedCases != resultSummary.PassedCases
+            || manifestSummary.FailedCases != resultSummary.FailedCases)
+        {
+            yield return $"cases manifest={manifestSummary.TotalCases}/{manifestSummary.PassedCases}/{manifestSummary.FailedCases} result={resultSummary.TotalCases}/{resultSummary.PassedCases}/{resultSummary.FailedCases}";
+        }
+
+        if (manifestSummary.TotalDiagnostics != resultSummary.TotalDiagnostics
+            || manifestSummary.ErrorDiagnostics != resultSummary.ErrorDiagnostics
+            || manifestSummary.WarningDiagnostics != resultSummary.WarningDiagnostics
+            || manifestSummary.InfoDiagnostics != resultSummary.InfoDiagnostics)
+        {
+            yield return $"diagnostics manifest={manifestSummary.TotalDiagnostics}/{manifestSummary.ErrorDiagnostics}/{manifestSummary.WarningDiagnostics}/{manifestSummary.InfoDiagnostics} result={resultSummary.TotalDiagnostics}/{resultSummary.ErrorDiagnostics}/{resultSummary.WarningDiagnostics}/{resultSummary.InfoDiagnostics}";
+        }
+
+        if (manifestSummary.ReproducibilityPackets != resultSummary.ReproducibilityPackets)
+        {
+            yield return $"packets manifest={manifestSummary.ReproducibilityPackets} result={resultSummary.ReproducibilityPackets}";
+        }
+    }
+
     private static string ResolveResultPath(string rootPath, string resultPath)
     {
         return Path.IsPathRooted(resultPath)
@@ -409,6 +703,11 @@ public static class GenomancyCli
     private static string FormatTags(IReadOnlyCollection<string> tags)
     {
         return tags.Count == 0 ? "none" : string.Join(", ", tags);
+    }
+
+    private static string FormatResultStatus(ResourceTestStatus? status)
+    {
+        return status is null ? "unavailable" : status.ToString() ?? "unavailable";
     }
 
     private static bool IsCliExecutionException(Exception exception)
@@ -438,6 +737,8 @@ public static class GenomancyCli
         writer.WriteLine("  genomancy batch show --batch-result <path> [options]");
         writer.WriteLine("  genomancy result show --result <path> [options]");
         writer.WriteLine("  genomancy manifest show --manifest <path> [options]");
+        writer.WriteLine("  genomancy manifest result show --manifest <path> --run-id <id> --result-root <path> [options]");
+        writer.WriteLine("  genomancy manifest verify --manifest <path> --result-root <path> [options]");
         writer.WriteLine("  genomancy manifest update --manifest <path> --from-batch-result <path> [options]");
         writer.WriteLine();
         writer.WriteLine("Commands:");
@@ -498,6 +799,27 @@ public static class GenomancyCli
         writer.WriteLine("Options:");
         writer.WriteLine("  --manifest-mode <upsert|append>");
         writer.WriteLine("  --report <path>               Write deterministic manifest report after update.");
+    }
+
+    private static void WriteManifestResultShowUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest result show --manifest <path> --run-id <id> --result-root <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --allow-summary-mismatch      Render the result even when manifest summary differs.");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
+    }
+
+    private static void WriteManifestVerifyUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest verify --manifest <path> --result-root <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --status <passed|failed>      Filter manifest entries by status.");
+        writer.WriteLine("  --tag <tag>                   Filter manifest entries by tag.");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
     }
 
     private static bool IsHelp(string value)
@@ -780,6 +1102,143 @@ public static class GenomancyCli
                 upsertManifest,
                 NormalizeOptionalPath(reportPath));
         }
+    }
+
+    private sealed record ManifestResultShowOptions(
+        string ManifestPath,
+        ResourceTestId RunId,
+        string ResultRootPath,
+        string? ReportPath,
+        bool RequireSummaryMatch)
+    {
+        public static ManifestResultShowOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            ResourceTestId? runId = null;
+            string? resultRootPath = null;
+            string? reportPath = null;
+            var requireSummaryMatch = true;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--run-id":
+                        runId = ResourceTestId.Parse(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--result-root":
+                        resultRootPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--allow-summary-mismatch":
+                        requireSummaryMatch = false;
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            var parsedRunId = runId;
+
+            if (parsedRunId is null)
+            {
+                throw new ArgumentException("Missing required option '--run-id'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(resultRootPath))
+            {
+                throw new ArgumentException("Missing required option '--result-root'.");
+            }
+
+            return new ManifestResultShowOptions(
+                manifestPath.Trim(),
+                parsedRunId.Value,
+                resultRootPath.Trim(),
+                NormalizeOptionalPath(reportPath),
+                requireSummaryMatch);
+        }
+    }
+
+    private sealed record ManifestVerifyOptions(
+        string ManifestPath,
+        string ResultRootPath,
+        ResourceTestStatus? Status,
+        string? Tag,
+        string? ReportPath)
+    {
+        public static ManifestVerifyOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            string? resultRootPath = null;
+            ResourceTestStatus? status = null;
+            string? tag = null;
+            string? reportPath = null;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--result-root":
+                        resultRootPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--status":
+                        status = ParseStatus(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--tag":
+                        tag = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(resultRootPath))
+            {
+                throw new ArgumentException("Missing required option '--result-root'.");
+            }
+
+            return new ManifestVerifyOptions(
+                manifestPath.Trim(),
+                resultRootPath.Trim(),
+                status,
+                NormalizeOptionalPath(tag),
+                NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private sealed record ManifestVerificationCheck(
+        ResourceTestResultManifestEntry Entry,
+        string ResolvedPath,
+        ManifestVerificationStatus Status,
+        ResourceTestStatus? ResultStatus,
+        IReadOnlyList<string> Diagnostics);
+
+    private enum ManifestVerificationStatus
+    {
+        Verified,
+        Missing,
+        Mismatched,
     }
 
     private static string ReadValue(IReadOnlyList<string> args, ref int index, string option)
