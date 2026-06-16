@@ -13,6 +13,7 @@ using Genomancy.Core.Runtime;
 using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
+using Genomancy.Storage.Binary;
 using Genomancy.Storage.Json;
 
 var tests = new (string Name, Action Test)[]
@@ -20,6 +21,7 @@ var tests = new (string Name, Action Test)[]
     ("Core assembly exposes stable name", CoreAssemblyExposesStableName),
     ("Core assembly is Godot independent", CoreAssemblyIsGodotIndependent),
     ("Core assembly has no forbidden dependencies", CoreAssemblyHasNoForbiddenDependencies),
+    ("Binary storage assembly preserves core dependency boundary", BinaryStorageAssemblyPreservesCoreDependencyBoundary),
     ("JSON storage assembly preserves core dependency boundary", JsonStorageAssemblyPreservesCoreDependencyBoundary),
     ("Resource ids validate and compare by stable value", ResourceIdsValidateAndCompareByStableValue),
     ("System definition versions validate and compare by stable value", SystemDefinitionVersionsValidateAndCompareByStableValue),
@@ -91,6 +93,8 @@ var tests = new (string Name, Action Test)[]
     ("Template group generation manifest is deterministic and serializable", TemplateGroupGenerationManifestIsDeterministicAndSerializable),
     ("Template group binary round trip preserves nested immutable profile", TemplateGroupBinaryRoundTripPreservesNestedImmutableProfile),
     ("Template group generation manifest binary round trip preserves provenance", TemplateGroupGenerationManifestBinaryRoundTripPreservesProvenance),
+    ("Binary file storage round trips serialized resources", BinaryFileStorageRoundTripsSerializedResources),
+    ("Binary file storage rejects unsafe paths and overwrite conflicts", BinaryFileStorageRejectsUnsafePathsAndOverwriteConflicts),
     ("JSON file storage round trips serialized resources", JsonFileStorageRoundTripsSerializedResources),
     ("JSON file storage rejects unsafe paths and overwrite conflicts", JsonFileStorageRejectsUnsafePathsAndOverwriteConflicts),
 };
@@ -163,6 +167,23 @@ static void CoreAssemblyHasNoForbiddenDependencies()
             throw new InvalidOperationException($"Forbidden core dependency found: {reference}");
         }
     }
+}
+
+static void BinaryStorageAssemblyPreservesCoreDependencyBoundary()
+{
+    var storageReferences = typeof(BinaryFileStore)
+        .Assembly
+        .GetReferencedAssemblies()
+        .Select(reference => reference.Name ?? string.Empty)
+        .ToArray();
+    var coreReferences = typeof(GenomancyCoreAssembly)
+        .Assembly
+        .GetReferencedAssemblies()
+        .Select(reference => reference.Name ?? string.Empty)
+        .ToArray();
+
+    AssertTrue(storageReferences.Contains("Genomancy.Core"), "Binary storage module must depend on Genomancy.Core.");
+    AssertTrue(!coreReferences.Contains("Genomancy.Storage.Binary"), "Genomancy.Core must not depend on binary storage.");
 }
 
 static void JsonStorageAssemblyPreservesCoreDependencyBoundary()
@@ -1934,6 +1955,89 @@ static void TemplateGroupGenerationManifestBinaryRoundTripPreservesProvenance()
     TemplatePopulationManifestBinaryCodec.Write(stream, manifest);
     stream.Position = 0;
     AssertEqual(manifest, TemplatePopulationManifestBinaryCodec.Read(stream, TestVersion()));
+}
+
+static void BinaryFileStorageRoundTripsSerializedResources()
+{
+    var root = CreateTemporaryStorageRoot();
+
+    try
+    {
+        var store = new BinaryFileStore(root);
+        var genome = CreateGenomeVersion("binary-storage.genome.v1", null, "allele.skin.baseline");
+        var template = CreatePopulationTemplate("template.binary-storage", "template.binary-storage.v1", lightWeight: 9, darkWeight: 1);
+        var group = new PopulationTemplateGroupVersion(
+            PopulationTemplateGroupId.Parse("template-group.binary-storage"),
+            PopulationTemplateGroupVersionId.Parse("template-group.binary-storage.v1"),
+            TestVersion(),
+            [new WeightedPopulationTemplate(template, 1)],
+            crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(1, 0.5),
+            changeSummary: "binary storage group");
+        var manifest = PopulationTemplateGroupService.GeneratePopulationManifest(
+            group,
+            2,
+            701,
+            "binary-storage.generated.",
+            "external:binary-storage.");
+        var variant = new RuntimeBodyPlanVariant(
+            BodyPlanVariantId.Parse("variant.binary-storage"),
+            TestVersion(),
+            Id("body.human"),
+            requiredGroupIds: [Id("group.common")],
+            changeSummary: "binary storage variant");
+
+        var genomeWrite = store.WriteGenomeVersion("genomes/storage-genome.gbin", genome);
+        var templateWrite = store.WritePopulationTemplate("templates/storage-template.tbin", template);
+        var groupWrite = store.WritePopulationTemplateGroup("template-groups/storage-group.tgbin", group);
+        var manifestWrite = store.WriteTemplatePopulationManifest("manifests/storage-manifest.tpmbin", manifest);
+        var variantWrite = store.WriteRuntimeBodyPlanVariant("variants/storage-variant.vbin", variant);
+
+        AssertTrue(File.Exists(genomeWrite.FullPath), "Genome binary file should exist after write.");
+        AssertTrue(templateWrite.ByteCount > 0, "Template binary write should report byte count.");
+        AssertTrue(groupWrite.ByteCount > 0, "Template-group binary write should report byte count.");
+        AssertTrue(manifestWrite.ByteCount > 0, "Manifest binary write should report byte count.");
+        AssertTrue(variantWrite.ByteCount > 0, "Variant binary write should report byte count.");
+        AssertGenomeVersionsEqual(genome, store.ReadGenomeVersion("genomes/storage-genome.gbin", TestVersion()));
+        AssertEqual(template, store.ReadPopulationTemplate("templates/storage-template.tbin", TestVersion()));
+        AssertEqual(group, store.ReadPopulationTemplateGroup("template-groups/storage-group.tgbin", TestVersion()));
+        AssertEqual(manifest, store.ReadTemplatePopulationManifest("manifests/storage-manifest.tpmbin", TestVersion()));
+        AssertEqual(variant, store.ReadRuntimeBodyPlanVariant("variants/storage-variant.vbin", TestVersion()));
+        AssertThrows<GenomeSerializationException>(
+            () => store.ReadPopulationTemplate("templates/storage-template.tbin", SystemDefinitionVersion.Parse("other.1")));
+
+        var truncatedBytes = File.ReadAllBytes(genomeWrite.FullPath)[..4];
+        File.WriteAllBytes(genomeWrite.FullPath, truncatedBytes);
+        AssertThrows<GenomeSerializationException>(
+            () => store.ReadGenomeVersion("genomes/storage-genome.gbin", TestVersion()));
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void BinaryFileStorageRejectsUnsafePathsAndOverwriteConflicts()
+{
+    var root = CreateTemporaryStorageRoot();
+
+    try
+    {
+        var store = new BinaryFileStore(root, new BinaryFileStoreOptions(overwriteExisting: false));
+        var genome = CreateGenomeVersion("binary-storage.safe.v1", null, "allele.skin.baseline");
+
+        _ = store.WriteGenomeVersion("genomes/safe.gbin", genome);
+
+        AssertThrows<BinaryFileStoreException>(() => store.WriteGenomeVersion("genomes/safe.gbin", genome));
+        AssertThrows<BinaryFileStoreException>(() => store.WriteGenomeVersion("../escape.gbin", genome));
+        AssertThrows<BinaryFileStoreException>(() => store.WriteGenomeVersion("/tmp/escape.gbin", genome));
+        AssertThrows<BinaryFileStoreException>(() => store.WriteGenomeVersion("genomes//empty.gbin", genome));
+        AssertThrows<BinaryFileStoreException>(() => store.ReadGenomeVersion("missing/file.gbin", TestVersion()));
+        AssertTrue(!File.Exists(Path.Combine(root, "escape.gbin")), "Rejected path should not write outside the requested location.");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
 }
 
 static void JsonFileStorageRoundTripsSerializedResources()

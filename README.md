@@ -11,6 +11,9 @@ providers, and resource testing infrastructure are separate project boundaries.
 core JSON resources to caller-owned filesystem paths without adding filesystem
 dependencies to `Genomancy.Core`.
 
+`Genomancy.Storage.Binary` persists the current core binary resource payloads
+to caller-owned filesystem paths under the same core/storage dependency boundary.
+
 ## Slice 0 Verification
 
 Run the current build and implementation smoke tests with:
