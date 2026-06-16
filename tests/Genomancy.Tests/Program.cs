@@ -83,6 +83,8 @@ var tests = new (string Name, Action Test)[]
     ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
     ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
     ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
+    ("Template group JSON round trip preserves nested immutable profile", TemplateGroupJsonRoundTripPreservesNestedImmutableProfile),
+    ("Template group generation manifest is deterministic and serializable", TemplateGroupGenerationManifestIsDeterministicAndSerializable),
 };
 
 var failures = new List<string>();
@@ -1709,6 +1711,88 @@ static void TemplateGroupVersionsValidateCompatibilityAndIsolateAliases()
         1,
         GenomeVersionId.Parse("template-group.zero.sample"),
         ExternalIndividualId.Parse("external:template-group.zero.sample")));
+}
+
+static void TemplateGroupJsonRoundTripPreservesNestedImmutableProfile()
+{
+    var first = CreatePopulationTemplate("template.group-json.first", "template.group-json.first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.group-json.second", "template.group-json.second.v1", lightWeight: 0, darkWeight: 10);
+    var child = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.json.child"),
+        PopulationTemplateGroupVersionId.Parse("template-group.json.child.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(second, 2)],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(0.25, 0.75),
+        changeSummary: "child group");
+    var root = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.json.root"),
+        PopulationTemplateGroupVersionId.Parse("template-group.json.root.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(first, 1)],
+        [new WeightedPopulationTemplateGroup(child, 3)],
+        new CrossTemplateBlendPolicy(0.5, 0.25),
+        "root group");
+    var text = PopulationTemplateGroupJsonCodec.WriteToText(root);
+    var roundTrip = PopulationTemplateGroupJsonCodec.ReadFromBuffer(
+        PopulationTemplateGroupJsonCodec.WriteToBuffer(root),
+        TestVersion());
+
+    AssertEqual(root, roundTrip);
+    AssertEqual(text, PopulationTemplateGroupJsonCodec.WriteToText(roundTrip));
+    AssertEqual(1, roundTrip.Templates.Count);
+    AssertEqual(1, roundTrip.ChildGroups.Count);
+    AssertEqual("child group", roundTrip.ChildGroups[0].Group.ChangeSummary);
+    AssertEqual(0.25, roundTrip.ChildGroups[0].Group.CrossTemplateBlendPolicy.Rate);
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateGroupJsonCodec.ReadFromBuffer(
+            PopulationTemplateGroupJsonCodec.WriteToBuffer(root),
+            SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void TemplateGroupGenerationManifestIsDeterministicAndSerializable()
+{
+    var first = CreatePopulationTemplate("template.manifest.first", "template.manifest.first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.manifest.second", "template.manifest.second.v1", lightWeight: 0, darkWeight: 10);
+    var group = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.manifest"),
+        PopulationTemplateGroupVersionId.Parse("template-group.manifest.v1"),
+        TestVersion(),
+        [
+            new WeightedPopulationTemplate(first, 1),
+            new WeightedPopulationTemplate(second, 1),
+        ],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(1, 0.5));
+    var firstManifest = PopulationTemplateGroupService.GeneratePopulationManifest(
+        group,
+        3,
+        900,
+        "manifest.generated.",
+        "external:manifest.");
+    var secondManifest = PopulationTemplateGroupService.GeneratePopulationManifest(
+        group,
+        3,
+        900,
+        "manifest.generated.",
+        "external:manifest.");
+    var roundTrip = TemplatePopulationManifestJsonCodec.ReadFromBuffer(
+        TemplatePopulationManifestJsonCodec.WriteToBuffer(firstManifest),
+        TestVersion());
+
+    AssertEqual(firstManifest, secondManifest);
+    AssertEqual(firstManifest, roundTrip);
+    AssertEqual(
+        TemplatePopulationManifestJsonCodec.WriteToText(firstManifest),
+        TemplatePopulationManifestJsonCodec.WriteToText(roundTrip));
+    AssertEqual(3, firstManifest.Entries.Count);
+    AssertEqual(900UL, firstManifest.Entries[0].SampleSeed);
+    AssertEqual(902UL, firstManifest.Entries[2].SampleSeed);
+    AssertEqual(GenomeVersionId.Parse("manifest.generated.1"), firstManifest.Entries[1].GenomeVersionId);
+    AssertEqual(ExternalIndividualId.Parse("external:manifest.2"), firstManifest.Entries[2].IndividualId);
+    AssertTrue(firstManifest.Entries.Any(entry => entry.WasBlended), "Blend-enabled generation should expose secondary template provenance.");
+    AssertThrows<GenomeSerializationException>(
+        () => TemplatePopulationManifestJsonCodec.ReadFromBuffer(
+            TemplatePopulationManifestJsonCodec.WriteToBuffer(firstManifest),
+            SystemDefinitionVersion.Parse("other.1")));
 }
 
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()

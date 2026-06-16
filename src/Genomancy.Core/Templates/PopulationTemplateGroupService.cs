@@ -39,6 +39,50 @@ public static class PopulationTemplateGroupService
             .ToArray();
     }
 
+    public static TemplatePopulationManifest GeneratePopulationManifest(
+        PopulationTemplateGroupVersion group,
+        int count,
+        ulong seed,
+        string genomeVersionPrefix,
+        string individualPrefix)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+
+        var generated = GeneratePopulation(group, count, seed, genomeVersionPrefix, individualPrefix);
+        return CreatePopulationManifest(group, generated, seed, count, genomeVersionPrefix, individualPrefix);
+    }
+
+    public static TemplatePopulationManifest CreatePopulationManifest(
+        PopulationTemplateGroupVersion group,
+        IReadOnlyList<GeneratedTemplateGenome> generated,
+        ulong seed,
+        int requestedCount,
+        string genomeVersionPrefix,
+        string individualPrefix)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        ArgumentNullException.ThrowIfNull(generated);
+
+        return new TemplatePopulationManifest(
+            group.Id,
+            group.VersionId,
+            group.SystemDefinitionVersion,
+            seed,
+            requestedCount,
+            genomeVersionPrefix,
+            individualPrefix,
+            generated.Select((item, index) => new TemplatePopulationManifestEntry(
+                index,
+                seed + (ulong)index,
+                item.GenomeVersion.Id,
+                item.GenomeVersion.IndividualId,
+                item.GroupPath,
+                item.PrimaryTemplateId,
+                item.PrimaryTemplateVersionId,
+                item.SecondaryTemplateId,
+                item.SecondaryTemplateVersionId)));
+    }
+
     private static GeneratedTemplateGenome SampleGenome(
         PopulationTemplateGroupVersion group,
         ulong seed,
