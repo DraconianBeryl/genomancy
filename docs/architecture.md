@@ -31,10 +31,11 @@ Implemented optional boundaries:
   resource-test result artifacts, and updating stored result manifests from
   aggregate batch results. It can also dereference manifest entries through an
   explicit result root and verify that manifest summaries match the referenced
-  result files. It delegates domain and persistence behavior to the core and
-  storage modules, writes deterministic text summaries/reports, and returns
-  stable process exit codes for success, resource-test failures, usage errors,
-  and execution errors.
+  result files, and repair stale manifest summaries from those referenced
+  results without changing manifest identity/path metadata. It delegates domain
+  and persistence behavior to the core and storage modules, writes deterministic
+  text summaries/reports, and returns stable process exit codes for success,
+  resource-test failures, usage errors, and execution errors.
 
 The following boundaries are reserved for later slices:
 

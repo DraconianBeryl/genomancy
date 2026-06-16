@@ -67,6 +67,13 @@ public static class GenomancyCli
 
         if (args.Length >= 2
             && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "repair", StringComparison.Ordinal))
+        {
+            return RepairManifest(args[2..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
             && string.Equals(args[1], "update", StringComparison.Ordinal))
         {
             return UpdateManifest(args[2..], output, error);
@@ -427,6 +434,84 @@ public static class GenomancyCli
         }
     }
 
+    private static int RepairManifest(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestRepairUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestRepairOptions options;
+
+        try
+        {
+            options = ManifestRepairOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestRepairUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var store = ResourceTestResultManifestJsonFileStore.Create();
+            var manifest = store.Load(options.ManifestPath);
+            var verifyOptions = new ManifestVerifyOptions(
+                options.ManifestPath,
+                options.ResultRootPath,
+                options.Status,
+                options.Tag,
+                null);
+            var checks = VerifyManifestEntries(manifest, verifyOptions).ToArray();
+            var blockingChecks = checks
+                .Where(check => check.Status == ManifestVerificationStatus.Missing
+                    || check.ResultSummary is null)
+                .ToArray();
+
+            if (blockingChecks.Length > 0)
+            {
+                output.Write(FormatManifestRepair(checks, options, saved: false));
+                throw new InvalidOperationException(
+                    $"Manifest repair cannot continue because {blockingChecks.Length} selected result artifact(s) are missing or unreadable.");
+            }
+
+            var repairedManifest = RepairManifestSummaries(manifest, checks);
+            var changedEntries = checks.Count(check => check.Status == ManifestVerificationStatus.Mismatched);
+
+            if (!options.DryRun)
+            {
+                store.Save(options.ManifestPath, repairedManifest);
+            }
+
+            var text = FormatManifestRepair(checks, options, saved: !options.DryRun);
+
+            output.Write(text);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, text);
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            if (changedEntries == 0 && options.DryRun)
+            {
+                output.WriteLine("Dry run: no manifest changes were needed.");
+            }
+
+            return checks.Any(check => check.ResultStatus == ResourceTestStatus.Failed)
+                ? (int)GenomancyCliExitCode.TestFailure
+                : (int)GenomancyCliExitCode.Success;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest repair failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
     private static void WriteExecutionSummary(
         ResourceTestBatchRunJsonFileExecutionResult execution,
         TextWriter output)
@@ -549,14 +634,15 @@ public static class GenomancyCli
 
             if (!File.Exists(resolvedPath))
             {
-                yield return new ManifestVerificationCheck(
-                    entry,
-                    resolvedPath,
-                    ManifestVerificationStatus.Missing,
-                    null,
-                    ["Result file does not exist."]);
-                continue;
-            }
+            yield return new ManifestVerificationCheck(
+                entry,
+                resolvedPath,
+                ManifestVerificationStatus.Missing,
+                null,
+                null,
+                ["Result file does not exist."]);
+            continue;
+        }
 
             ResourceTestRunResult? result = null;
             string? loadDiagnostic = null;
@@ -577,6 +663,7 @@ public static class GenomancyCli
                     resolvedPath,
                     ManifestVerificationStatus.Mismatched,
                     null,
+                    null,
                     [$"Result file could not be loaded: {loadDiagnostic}"]);
                 continue;
             }
@@ -594,6 +681,7 @@ public static class GenomancyCli
                 resolvedPath,
                 diagnostics.Length == 0 ? ManifestVerificationStatus.Verified : ManifestVerificationStatus.Mismatched,
                 result.Status,
+                resultSummary,
                 diagnostics);
         }
     }
@@ -641,6 +729,96 @@ public static class GenomancyCli
         }
 
         return writer.ToString();
+    }
+
+    private static ResourceTestResultManifest RepairManifestSummaries(
+        ResourceTestResultManifest manifest,
+        IReadOnlyCollection<ManifestVerificationCheck> checks)
+    {
+        var repairByRunId = checks
+            .Where(check => check.ResultSummary is not null)
+            .ToDictionary(check => check.Entry.RunId);
+
+        return new ResourceTestResultManifest(manifest.Entries.Select(entry =>
+        {
+            if (!repairByRunId.TryGetValue(entry.RunId, out var check))
+            {
+                return entry;
+            }
+
+            return new ResourceTestResultManifestEntry(
+                entry.RunId,
+                entry.ResultPath,
+                check.ResultSummary ?? throw new InvalidOperationException("Repair check has no result summary."),
+                entry.CompletedAtUtc,
+                entry.Label,
+                entry.Tags);
+        }));
+    }
+
+    private static string FormatManifestRepair(
+        IReadOnlyCollection<ManifestVerificationCheck> checks,
+        ManifestRepairOptions options,
+        bool saved)
+    {
+        using var writer = new StringWriter();
+        var verified = checks.Count(check => check.Status == ManifestVerificationStatus.Verified);
+        var missing = checks.Count(check => check.Status == ManifestVerificationStatus.Missing);
+        var mismatched = checks.Count(check => check.Status == ManifestVerificationStatus.Mismatched);
+        var failedResults = checks.Count(check => check.ResultStatus == ResourceTestStatus.Failed);
+        var changed = checks.Count(check => check.Status == ManifestVerificationStatus.Mismatched
+            && check.ResultSummary is not null);
+
+        writer.WriteLine("Resource test result manifest repair");
+        writer.WriteLine($"Manifest: {options.ManifestPath}");
+        writer.WriteLine($"Result root: {options.ResultRootPath}");
+        writer.WriteLine($"Mode: {(options.DryRun ? "dry-run" : "write")}");
+        writer.WriteLine($"Saved: {(saved ? "yes" : "no")}");
+        writer.WriteLine($"Entries: {checks.Count} selected, {verified} already matched, {changed} repaired, {missing} missing, {mismatched} mismatched, {failedResults} failed results");
+
+        if (options.Status is not null)
+        {
+            writer.WriteLine($"Status filter: {options.Status}");
+        }
+
+        if (options.Tag is not null)
+        {
+            writer.WriteLine($"Tag filter: {options.Tag}");
+        }
+
+        writer.WriteLine("Runs:");
+
+        foreach (var check in checks.OrderBy(check => check.Entry.RunId))
+        {
+            writer.WriteLine(
+                $"- {check.Entry.RunId}: {FormatRepairAction(check)} manifestStatus={check.Entry.Summary.Status} resultStatus={FormatResultStatus(check.ResultStatus)} path={check.ResolvedPath}");
+
+            if (check.Diagnostics.Count == 0)
+            {
+                writer.WriteLine("  Diagnostics: none");
+            }
+            else
+            {
+                writer.WriteLine($"  Diagnostics: {string.Join("; ", check.Diagnostics)}");
+            }
+        }
+
+        return writer.ToString();
+    }
+
+    private static string FormatRepairAction(ManifestVerificationCheck check)
+    {
+        if (check.Status == ManifestVerificationStatus.Verified)
+        {
+            return "unchanged";
+        }
+
+        if (check.ResultSummary is null)
+        {
+            return check.Status.ToString();
+        }
+
+        return "repaired";
     }
 
     private static ResourceTestResultManifestEntry FindManifestEntry(
@@ -739,6 +917,7 @@ public static class GenomancyCli
         writer.WriteLine("  genomancy manifest show --manifest <path> [options]");
         writer.WriteLine("  genomancy manifest result show --manifest <path> --run-id <id> --result-root <path> [options]");
         writer.WriteLine("  genomancy manifest verify --manifest <path> --result-root <path> [options]");
+        writer.WriteLine("  genomancy manifest repair --manifest <path> --result-root <path> [options]");
         writer.WriteLine("  genomancy manifest update --manifest <path> --from-batch-result <path> [options]");
         writer.WriteLine();
         writer.WriteLine("Commands:");
@@ -819,6 +998,18 @@ public static class GenomancyCli
         writer.WriteLine("Options:");
         writer.WriteLine("  --status <passed|failed>      Filter manifest entries by status.");
         writer.WriteLine("  --tag <tag>                   Filter manifest entries by tag.");
+        writer.WriteLine("  --report <path>               Also write deterministic text report.");
+    }
+
+    private static void WriteManifestRepairUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest repair --manifest <path> --result-root <path> [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --status <passed|failed>      Repair only manifest entries with this stored status.");
+        writer.WriteLine("  --tag <tag>                   Repair only manifest entries with this tag.");
+        writer.WriteLine("  --dry-run                     Report repairs without saving the manifest.");
         writer.WriteLine("  --report <path>               Also write deterministic text report.");
     }
 
@@ -1227,11 +1418,76 @@ public static class GenomancyCli
         }
     }
 
+    private sealed record ManifestRepairOptions(
+        string ManifestPath,
+        string ResultRootPath,
+        ResourceTestStatus? Status,
+        string? Tag,
+        string? ReportPath,
+        bool DryRun)
+    {
+        public static ManifestRepairOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            string? resultRootPath = null;
+            ResourceTestStatus? status = null;
+            string? tag = null;
+            string? reportPath = null;
+            var dryRun = false;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--result-root":
+                        resultRootPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--status":
+                        status = ParseStatus(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--tag":
+                        tag = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--dry-run":
+                        dryRun = true;
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(resultRootPath))
+            {
+                throw new ArgumentException("Missing required option '--result-root'.");
+            }
+
+            return new ManifestRepairOptions(
+                manifestPath.Trim(),
+                resultRootPath.Trim(),
+                status,
+                NormalizeOptionalPath(tag),
+                NormalizeOptionalPath(reportPath),
+                dryRun);
+        }
+    }
+
     private sealed record ManifestVerificationCheck(
         ResourceTestResultManifestEntry Entry,
         string ResolvedPath,
         ManifestVerificationStatus Status,
         ResourceTestStatus? ResultStatus,
+        ResourceTestRunSummary? ResultSummary,
         IReadOnlyList<string> Diagnostics);
 
     private enum ManifestVerificationStatus

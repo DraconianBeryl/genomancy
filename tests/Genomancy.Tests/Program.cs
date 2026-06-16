@@ -135,6 +135,9 @@ var tests = new (string Name, Action Test)[]
     ("CLI shows manifest result by run id", CliShowsManifestResultByRunId),
     ("CLI verifies manifest result files", CliVerifiesManifestResultFiles),
     ("CLI reports manifest verification integrity failures", CliReportsManifestVerificationIntegrityFailures),
+    ("CLI repairs manifest summaries from result files", CliRepairsManifestSummariesFromResultFiles),
+    ("CLI dry run repair preserves manifests", CliDryRunRepairPreservesManifests),
+    ("CLI repair reports missing result files without saving", CliRepairReportsMissingResultFilesWithoutSaving),
     ("Godot adapter round trips genome and template documents", GodotAdapterRoundTripsGenomeAndTemplateDocuments),
     ("Godot adapter reports import diagnostics", GodotAdapterReportsImportDiagnostics),
     ("Godot adapter round trips template group and result documents", GodotAdapterRoundTripsTemplateGroupAndResultDocuments),
@@ -3944,6 +3947,177 @@ static void CliReportsManifestVerificationIntegrityFailures()
     }
 }
 
+static void CliRepairsManifestSummariesFromResultFiles()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(root, "manifest.json");
+    var resultRootPath = Path.Combine(root, "run-results");
+    var reportPath = Path.Combine(root, "reports", "repair.txt");
+    var batch = CreateBatchResultCodecSample();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var mismatchedManifest = CreateMismatchedManifestForBatch(batch);
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        manifestStore.Save(manifestPath, mismatchedManifest);
+        SaveBatchRunResults(resultRootPath, batch);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "repair",
+                "--manifest",
+                manifestPath,
+                "--result-root",
+                resultRootPath,
+                "--report",
+                reportPath,
+            ],
+            output,
+            error);
+        var repaired = manifestStore.Load(manifestPath);
+        var verifyOutput = new StringWriter();
+        var verifyExitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "verify",
+                "--manifest",
+                manifestPath,
+                "--result-root",
+                resultRootPath,
+            ],
+            verifyOutput,
+            new StringWriter());
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertEqual("", error.ToString());
+        AssertTrue(output.ToString().Contains("Resource test result manifest repair", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Saved: yes", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("2 repaired", StringComparison.Ordinal), output.ToString());
+        AssertTrue(File.ReadAllText(reportPath).Contains("run.batch-result.failed: repaired", StringComparison.Ordinal), "Repair report must include repaired entries.");
+        AssertEqual(ResourceTestStatus.Failed, repaired.Entries.Single(entry => entry.RunId.Value == "run.batch-result.failed").Summary.Status);
+        AssertEqual(1, repaired.Entries.Single(entry => entry.RunId.Value == "run.batch-result.failed").Summary.ErrorDiagnostics);
+        AssertEqual("Stored failed result", repaired.Entries.Single(entry => entry.RunId.Value == "run.batch-result.failed").Label);
+        AssertTrue(
+            repaired.Entries.Single(entry => entry.RunId.Value == "run.batch-result.failed").Tags.SequenceEqual(["batch-result", "failed"]),
+            "Repair must preserve manifest entry tags.");
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, verifyExitCode);
+        AssertTrue(verifyOutput.ToString().Contains("0 missing, 0 mismatched", StringComparison.Ordinal), verifyOutput.ToString());
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliDryRunRepairPreservesManifests()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(root, "manifest.json");
+    var resultRootPath = Path.Combine(root, "run-results");
+    var batch = CreateBatchResultCodecSample();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var mismatchedManifest = CreateMismatchedManifestForBatch(batch);
+    var originalText = ResourceTestResultManifestJsonCodec.WriteToText(mismatchedManifest);
+    var output = new StringWriter();
+
+    try
+    {
+        manifestStore.Save(manifestPath, mismatchedManifest);
+        SaveBatchRunResults(resultRootPath, batch);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "repair",
+                "--manifest",
+                manifestPath,
+                "--result-root",
+                resultRootPath,
+                "--tag",
+                "failed",
+                "--dry-run",
+            ],
+            output,
+            new StringWriter());
+        var afterDryRun = manifestStore.Load(manifestPath);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertTrue(output.ToString().Contains("Mode: dry-run", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Entries: 1 selected", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("1 repaired", StringComparison.Ordinal), output.ToString());
+        AssertEqual(originalText, ResourceTestResultManifestJsonCodec.WriteToText(afterDryRun));
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliRepairReportsMissingResultFilesWithoutSaving()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(root, "manifest.json");
+    var resultRootPath = Path.Combine(root, "run-results");
+    var batch = CreateBatchResultCodecSample();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var mismatchedManifest = CreateMismatchedManifestForBatch(batch);
+    var originalText = ResourceTestResultManifestJsonCodec.WriteToText(mismatchedManifest);
+    var output = new StringWriter();
+    var error = new StringWriter();
+
+    try
+    {
+        manifestStore.Save(manifestPath, mismatchedManifest);
+        ResourceTestResultJsonFileStore.Create().Save(
+            Path.Combine(resultRootPath, "results", "failed.json"),
+            batch.Runs.Single(run => run.RunId.Value == "run.batch-result.failed").Result);
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "repair",
+                "--manifest",
+                manifestPath,
+                "--result-root",
+                resultRootPath,
+            ],
+            output,
+            error);
+        var afterFailure = manifestStore.Load(manifestPath);
+
+        AssertEqual((int)GenomancyCliExitCode.ExecutionError, exitCode);
+        AssertTrue(output.ToString().Contains("Saved: no", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("1 missing", StringComparison.Ordinal), output.ToString());
+        AssertTrue(error.ToString().Contains("Manifest repair failed:", StringComparison.Ordinal), error.ToString());
+        AssertEqual(originalText, ResourceTestResultManifestJsonCodec.WriteToText(afterFailure));
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
 static void GodotAdapterRoundTripsGenomeAndTemplateDocuments()
 {
     var genome = CreateGenomeVersion("genome.godot", null, "allele.skin.baseline");
@@ -4766,6 +4940,17 @@ static void SaveBatchRunResults(string rootPath, ResourceTestBatchRunResult batc
 
         store.Save(path, run.Result);
     }
+}
+
+static ResourceTestResultManifest CreateMismatchedManifestForBatch(ResourceTestBatchRunResult batch)
+{
+    return new ResourceTestResultManifest(batch.Manifest.Entries.Select(entry => new ResourceTestResultManifestEntry(
+        entry.RunId,
+        entry.ResultPath,
+        new ResourceTestRunSummary(ResourceTestStatus.Passed, 0, 0, 0, 0, 0, 0, 0, 0),
+        entry.CompletedAtUtc,
+        entry.Label,
+        entry.Tags)));
 }
 
 static SystemDefinitionVersion TestVersion()

@@ -67,4 +67,9 @@ dotnet run --project src/Genomancy.Cli -- manifest verify \
   --manifest path/to/result-manifest.json \
   --result-root path/to/run-results \
   --status failed
+
+dotnet run --project src/Genomancy.Cli -- manifest repair \
+  --manifest path/to/result-manifest.json \
+  --result-root path/to/run-results \
+  --dry-run
 ```
