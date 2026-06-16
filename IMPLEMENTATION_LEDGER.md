@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-16 |
-| Current implementation slice | Slice 12 - Template-group serialization and generation manifests |
+| Current implementation slice | Slice 13 - JSON-backed binary serialization expansion |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -74,6 +74,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-06 | Refine Slice 10 to immutable statistical population template versions with deterministic sampling, blending, template-from-individual, population generation, and JSON codecs. | Slice 10 implementation | Advances template workflows while deferring biased inheritance/mutation hooks, full statistical tolerances, and binary template codecs. | Accepted |
 | 2026-06-07 | Refine Slice 11 to immutable population template-group versions, weighted direct/nested selection, optional deterministic cross-template blending, and structure-preserving generated genome metadata. | Slice 11 implementation | Advances nested population simulation while deferring template-group serialization, authored resource validation, statistical tolerance reports, and biased inheritance/mutation hooks. | Accepted |
 | 2026-06-16 | Defer direct resource-test framework implementation and use Slice 12 for template-group serialization plus deterministic generation manifests. | Project request | Advances testability and reproducibility support without adding designer-authored test resources, test operations, assertions, or runners. Resource testing shifts to Slice 13+. | Accepted |
+| 2026-06-16 | Continue deferring direct resource-test framework work and use Slice 13 for JSON-backed binary codecs over existing serializable resources. | Project request | Advances core serialization compatibility and testability support without adding storage modules or resource-test framework behavior. Resource testing shifts to Slice 14+. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -122,7 +123,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | In progress | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | In progress | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
-| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 13+ | Self-tests + integration |
+| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 14+ | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | In progress | 4, 12+ | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 14 | Round-trip + compatibility |
@@ -623,7 +624,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Resource-authored generated complement policies, generated body structures beyond group state, runtime variant persistence in genome versions, binary variant codecs, variant migration, advanced expression policy language, trace/non-ploidal expression effects, and resource-test coverage.
+- Resource-authored generated complement policies, generated body structures beyond group state, runtime variant persistence in genome versions, final compact variant binary layout, variant migration, advanced expression policy language, trace/non-ploidal expression effects, and resource-test coverage.
 
 **Requirements advanced:** REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR.
 
@@ -676,7 +677,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 10 - Population templates
 
-**Status:** Verified on 2026-06-06 for the refined Slice 10 acceptance criteria. Broader requirement families remain **In progress** where later slices add template groups, biased inheritance/mutation hooks, statistical tolerances, and binary codecs.
+**Status:** Verified on 2026-06-06 for the refined Slice 10 acceptance criteria. Broader requirement families remain **In progress** where later slices add template groups, biased inheritance/mutation hooks, statistical tolerances, and final compact binary layouts.
 
 **Objective:** Create immutable statistical population-template versions that can deterministically produce genome versions.
 
@@ -723,7 +724,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- Template groups, nested populations, cross-template blend rates, structure-preserving nested simulation, biased inheritance/mutation hooks, statistical tolerance reports, binary template codecs, storage modules, and resource-test coverage.
+- Biased inheritance/mutation hooks, statistical tolerance reports, final compact binary template layout, storage modules, and resource-test coverage.
 
 **Requirements advanced:** REQ-TEMPLATE, REQ-TFROMIND, REQ-RANDOM, REQ-SERIAL.
 
@@ -776,13 +777,13 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Not yet implemented**
 
-- JSON/binary template-group codecs, generation manifests, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, biased inheritance/mutation hooks, and resource-test coverage.
+- External template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, structure-level statistical reports, biased inheritance/mutation hooks, final compact binary template-group layout, and resource-test coverage.
 
 **Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-RANDOM.
 
 ### Slice 12 - Template-group serialization and generation manifests
 
-**Status:** Verified on 2026-06-16 for the refined Slice 12 acceptance criteria. Broader requirement families remain **In progress** where later slices add binary codecs, final compatibility contracts, statistical tolerance reports, resource tests, and storage modules.
+**Status:** Verified on 2026-06-16 for the refined Slice 12 acceptance criteria. Broader requirement families remain **In progress** where later slices add final compatibility contracts, statistical tolerance reports, resource tests, and storage modules.
 
 **Objective:** Add deterministic serialization and reproducibility support for template-group generation while deferring direct resource-test framework work.
 
@@ -825,23 +826,78 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 **Not yet implemented**
 
 - Direct resource-test framework work: test resources, fixtures, operations, assertions, runners, failure packets, tags, severity, snapshots, fuzz/matrix execution, and runtime-safe resource-test subsets.
-- Binary template-group or manifest codecs, external template/template-group registries, migration hooks, compatibility matrices, statistical tolerance reports, and storage modules.
+- External template/template-group registries, migration hooks, compatibility matrices, statistical tolerance reports, and storage modules.
 
 **Requirements advanced:** REQ-TGROUP, REQ-TEMPLATE, REQ-RANDOM, REQ-SERIAL, REQ-STORAGE.
 
-### Slice 13+ - Resource testing framework
+### Slice 13 - JSON-backed binary serialization expansion
+
+**Status:** Verified on 2026-06-16 for the refined Slice 13 acceptance criteria. Broader requirement families remain **In progress** where later slices finalize compact binary layouts, compatibility matrices, storage modules, and resource tests.
+
+**Objective:** Expand preliminary binary serialization coverage for already-serializable core resources without implementing direct resource-test framework behavior.
+
+**Deliverables**
+
+- Add a shared internal JSON-backed binary envelope helper for preliminary binary payloads.
+- Keep the existing genome binary codec behavior while centralizing common header, length, truncation, and payload extraction logic.
+- Add binary stream and buffer APIs for population template versions.
+- Add binary stream and buffer APIs for population template-group versions.
+- Add binary stream and buffer APIs for generated-population manifests.
+- Add binary stream and buffer APIs for runtime body-plan variants.
+- Preserve system-definition version compatibility checks by delegating decoded JSON payloads through existing JSON codecs.
+
+**Acceptance criteria**
+
+- Binary round trips preserve population template profiles.
+- Binary round trips preserve nested population template-group profiles and canonical JSON equivalence.
+- Binary round trips preserve generation manifest sample seeds, IDs, group paths, and blend provenance.
+- Binary round trips preserve runtime body-plan variant state.
+- Truncated binary payloads fail with `GenomeSerializationException`.
+- Binary deserialization rejects mismatched system-definition versions.
+- Direct resource-test framework definitions, operations, assertions, diagnostics, and runners remain unimplemented in this slice.
+
+**Tests**
+
+- Population template binary round-trip, stream round-trip, truncation rejection, and version-rejection test.
+- Template-group binary round-trip, canonical JSON equivalence, stream round-trip, truncation rejection, and version-rejection test.
+- Template-population manifest binary round-trip, stream round-trip, provenance preservation, truncation rejection, and version-rejection test.
+- Runtime body-plan variant binary round-trip, stream round-trip, truncation rejection, and version-rejection test.
+
+**Implemented**
+
+- `JsonBackedBinaryEnvelopeCodec` shared internal helper.
+- `PopulationTemplateBinaryCodec`.
+- `PopulationTemplateGroupBinaryCodec`.
+- `TemplatePopulationManifestBinaryCodec`.
+- `RuntimeBodyPlanVariantBinaryCodec`.
+- `GenomeBinaryCodec` now uses the shared helper while preserving its existing public API.
+
+**Implementation simplification choices**
+
+- Binary codecs are preliminary JSON-backed envelopes with per-resource magic headers, matching the earlier genome binary simplification.
+- The slice does not define final compact binary field layouts, migration tables, or cross-version compatibility matrices.
+- Binary payload validation delegates semantic version compatibility to the existing JSON codecs.
+
+**Not yet implemented**
+
+- Direct resource-test framework work: test resources, fixtures, operations, assertions, runners, failure packets, tags, severity, snapshots, fuzz/matrix execution, and runtime-safe resource-test subsets.
+- Final compact binary layouts, binary compatibility matrices, storage modules, serialized resource-test/failure-packet codecs, and Godot adapter serialization.
+
+**Requirements advanced:** REQ-SERIAL, REQ-TEMPLATE, REQ-TGROUP, REQ-VARIANT, REQ-RANDOM, REQ-STORAGE.
+
+### Slice 14+ - Resource testing framework
 
 Refine and likely subdivide before implementation. Build designer-authored test resources, fixtures, operations, assertions, custom extension points, validation/reachability/policy coverage, deterministic simulation and statistical tests, diagnostics/reproducibility packets, tags, severity, snapshots, fuzz/matrix execution, isolation, and runtime-safe subsets.
 
 **Requirements targeted:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
-### Slice 14 - Serialization hardening and optional storage modules
+### Slice 15 - Serialization hardening and optional storage modules
 
 Refine before implementation. Finalize compatibility contracts and granular JSON/binary formats, then add non-core JSON-file, custom-binary-file, and SQLite storage modules with migrations and test-fixture support.
 
 **Requirements targeted:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
 
-### Slice 15 - Godot adapter and packaging
+### Slice 16 - Godot adapter and packaging
 
 Refine against the selected Godot/.NET versions. Add a thin adapter for Godot authoring/runtime workflows, package import/export, diagnostics, and engine-facing conversions while preserving a Godot-free core.
 
@@ -951,13 +1007,17 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - JSON round-trip compatibility checks for template groups by system-definition version
   - deterministic generated-population manifests with root group identity, seed, count, ID prefixes, sample seeds, generated IDs, group paths, and template provenance
   - deterministic JSON codec for generated-population manifests
+- Slice 13 JSON-backed binary serialization expansion:
+  - shared internal JSON-backed binary envelope helper
+  - genome binary codec centralization on the shared helper
+  - binary codecs for population templates, population template groups, generated-population manifests, and runtime body-plan variants
 
 ### Not yet implemented
 
 - Nonstandard reproduction beyond clonal copy, full compatibility, gestational simulation, and advanced mosaic/chimera behavior.
 - Regional geometry, mosaic/chimera serialization, overlapping mosaic expression, chimeric expression integration, and reproduction workflows from inheritance sites.
 - Resource-authored generated complement policies, generated structures beyond group state, variant persistence in genome versions, and binary variant codecs.
-- Template-group binary codecs, external template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, and structure-level statistical simulation reports.
+- External template-group reference resolution, resource-authored template-group validation, pair-specific blend matrices, and structure-level statistical simulation reports.
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
@@ -977,8 +1037,9 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 9 starts mosaicism with ID-based regional assignment only; geometry, blending, serialization, and automatic chimeric expression are deferred.
 - Slice 10 starts templates with independent allele-rank sampling and JSON only; linkage/correlation, biased inheritance/mutation hooks, statistical tolerances, and binary template codecs are deferred.
 - Slice 11 embeds child template-group versions directly and supports a single cross-template blend policy per group; reference registries, pair-specific blend matrices, codecs, and statistical reports are deferred.
-- Slice 12 keeps template-group serialization by-value and manifest-only for generated population reproducibility; external registries, binary codecs, full generated genome packets, and statistical aggregate reports are deferred.
-- Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
+- Slice 12 keeps template-group serialization by-value and manifest-only for generated population reproducibility; external registries, full generated genome packets, and statistical aggregate reports are deferred.
+- Slice 13 keeps new binary codecs as JSON-backed envelopes with resource-specific magic headers; final compact binary layouts, compatibility matrices, and storage modules are deferred.
+- Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 15.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1065,6 +1126,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 12 package-free implementation tests in `tests/Genomancy.Tests`:
   - nested template-group JSON round trip, canonical text, blend-policy preservation, and version rejection
   - deterministic generated-population manifest creation, JSON round trip, sample-seed/ID/provenance preservation, and version rejection
+- Slice 13 package-free implementation tests in `tests/Genomancy.Tests`:
+  - runtime body-plan variant binary round trip, stream round trip, truncation rejection, and version rejection
+  - population template binary round trip, stream round trip, truncation rejection, and version rejection
+  - nested template-group binary round trip, canonical JSON equivalence, stream round trip, truncation rejection, and version rejection
+  - generated-population manifest binary round trip, stream round trip, provenance preservation, truncation rejection, and version rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1082,6 +1148,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 10 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 11 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 12 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 13 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
@@ -1101,14 +1168,14 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 | ID | Decision or risk | Needed by | Current handling |
 |---|---|---|---|
-| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 15 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
-| OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use a versioned preliminary codec, then stabilize in Slice 14. |
+| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 16 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
+| OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use versioned preliminary JSON-backed codecs, then stabilize final compact layouts in Slice 15. |
 | OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; statistical tolerance and reproducibility packet design remains under REQ-RANDOM later work. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
-| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 14 | Keep provider outside core and evaluate platform support before selection. |
+| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 15 | Keep provider outside core and evaluate platform support before selection. |
 
 ## Ledger update checklist
 

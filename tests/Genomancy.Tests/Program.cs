@@ -72,6 +72,7 @@ var tests = new (string Name, Action Test)[]
     ("Generated complements add missing groups and validate definitions", GeneratedComplementsAddMissingGroupsAndValidateDefinitions),
     ("Runtime body plan variants evaluate required generated groups", RuntimeBodyPlanVariantsEvaluateRequiredGeneratedGroups),
     ("Runtime body plan variant serialization preserves versioned state", RuntimeBodyPlanVariantSerializationPreservesVersionedState),
+    ("Runtime body plan variant binary serialization preserves versioned state", RuntimeBodyPlanVariantBinarySerializationPreservesVersionedState),
     ("Mosaic regional expression uses assigned genome version", MosaicRegionalExpressionUsesAssignedGenomeVersion),
     ("Mosaic inheritance sites resolve regional genome sources", MosaicInheritanceSitesResolveRegionalGenomeSources),
     ("Chimeric material remains distinct from integrated variants", ChimericMaterialRemainsDistinctFromIntegratedVariants),
@@ -80,11 +81,14 @@ var tests = new (string Name, Action Test)[]
     ("Population generation produces stable versioned genomes", PopulationGenerationProducesStableVersionedGenomes),
     ("Population template can be created from individual genome", PopulationTemplateCanBeCreatedFromIndividualGenome),
     ("Population template JSON round trip preserves immutable profile", PopulationTemplateJsonRoundTripPreservesImmutableProfile),
+    ("Population template binary round trip preserves immutable profile", PopulationTemplateBinaryRoundTripPreservesImmutableProfile),
     ("Nested template groups preserve generated population structure", NestedTemplateGroupsPreserveGeneratedPopulationStructure),
     ("Template groups apply deterministic cross template blending", TemplateGroupsApplyDeterministicCrossTemplateBlending),
     ("Template group versions validate compatibility and isolate aliases", TemplateGroupVersionsValidateCompatibilityAndIsolateAliases),
     ("Template group JSON round trip preserves nested immutable profile", TemplateGroupJsonRoundTripPreservesNestedImmutableProfile),
     ("Template group generation manifest is deterministic and serializable", TemplateGroupGenerationManifestIsDeterministicAndSerializable),
+    ("Template group binary round trip preserves nested immutable profile", TemplateGroupBinaryRoundTripPreservesNestedImmutableProfile),
+    ("Template group generation manifest binary round trip preserves provenance", TemplateGroupGenerationManifestBinaryRoundTripPreservesProvenance),
 };
 
 var failures = new List<string>();
@@ -1446,6 +1450,31 @@ static void RuntimeBodyPlanVariantSerializationPreservesVersionedState()
             SystemDefinitionVersion.Parse("other.1")));
 }
 
+static void RuntimeBodyPlanVariantBinarySerializationPreservesVersionedState()
+{
+    var variant = new RuntimeBodyPlanVariant(
+        BodyPlanVariantId.Parse("variant.binary-winged-human"),
+        TestVersion(),
+        Id("body.human"),
+        requiredGroupIds: [Id("group.wings")],
+        optionalGroupIds: [Id("group.fur")],
+        sharedGroupIds: [Id("group.common")],
+        "binary variant");
+    var buffer = RuntimeBodyPlanVariantBinaryCodec.WriteToBuffer(variant);
+    var roundTrip = RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(variant, roundTrip);
+    AssertThrows<GenomeSerializationException>(
+        () => RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(
+        () => RuntimeBodyPlanVariantBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
+
+    using var stream = new MemoryStream();
+    RuntimeBodyPlanVariantBinaryCodec.Write(stream, variant);
+    stream.Position = 0;
+    AssertEqual(variant, RuntimeBodyPlanVariantBinaryCodec.Read(stream, TestVersion()));
+}
+
 static void MosaicRegionalExpressionUsesAssignedGenomeVersion()
 {
     var definition = CreateExpressionDefinition().Freeze();
@@ -1609,6 +1638,24 @@ static void PopulationTemplateJsonRoundTripPreservesImmutableProfile()
         () => PopulationTemplateJsonCodec.ReadFromBuffer(
             PopulationTemplateJsonCodec.WriteToBuffer(template),
             SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void PopulationTemplateBinaryRoundTripPreservesImmutableProfile()
+{
+    var template = CreatePopulationTemplate("template.people.binary", "template.people.binary.v1", lightWeight: 9, darkWeight: 1);
+    var buffer = PopulationTemplateBinaryCodec.WriteToBuffer(template);
+    var roundTrip = PopulationTemplateBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(template, roundTrip);
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
+
+    using var stream = new MemoryStream();
+    PopulationTemplateBinaryCodec.Write(stream, template);
+    stream.Position = 0;
+    AssertEqual(template, PopulationTemplateBinaryCodec.Read(stream, TestVersion()));
 }
 
 static void NestedTemplateGroupsPreserveGeneratedPopulationStructure()
@@ -1793,6 +1840,79 @@ static void TemplateGroupGenerationManifestIsDeterministicAndSerializable()
         () => TemplatePopulationManifestJsonCodec.ReadFromBuffer(
             TemplatePopulationManifestJsonCodec.WriteToBuffer(firstManifest),
             SystemDefinitionVersion.Parse("other.1")));
+}
+
+static void TemplateGroupBinaryRoundTripPreservesNestedImmutableProfile()
+{
+    var first = CreatePopulationTemplate("template.group-binary.first", "template.group-binary.first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.group-binary.second", "template.group-binary.second.v1", lightWeight: 0, darkWeight: 10);
+    var child = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.binary.child"),
+        PopulationTemplateGroupVersionId.Parse("template-group.binary.child.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(second, 2)],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(0.25, 0.75),
+        changeSummary: "binary child group");
+    var root = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.binary.root"),
+        PopulationTemplateGroupVersionId.Parse("template-group.binary.root.v1"),
+        TestVersion(),
+        [new WeightedPopulationTemplate(first, 1)],
+        [new WeightedPopulationTemplateGroup(child, 3)],
+        new CrossTemplateBlendPolicy(0.5, 0.25),
+        "binary root group");
+    var buffer = PopulationTemplateGroupBinaryCodec.WriteToBuffer(root);
+    var roundTrip = PopulationTemplateGroupBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(root, roundTrip);
+    AssertEqual(
+        PopulationTemplateGroupJsonCodec.WriteToText(root),
+        PopulationTemplateGroupJsonCodec.WriteToText(roundTrip));
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateGroupBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(
+        () => PopulationTemplateGroupBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
+
+    using var stream = new MemoryStream();
+    PopulationTemplateGroupBinaryCodec.Write(stream, root);
+    stream.Position = 0;
+    AssertEqual(root, PopulationTemplateGroupBinaryCodec.Read(stream, TestVersion()));
+}
+
+static void TemplateGroupGenerationManifestBinaryRoundTripPreservesProvenance()
+{
+    var first = CreatePopulationTemplate("template.manifest-binary.first", "template.manifest-binary.first.v1", lightWeight: 10, darkWeight: 0);
+    var second = CreatePopulationTemplate("template.manifest-binary.second", "template.manifest-binary.second.v1", lightWeight: 0, darkWeight: 10);
+    var group = new PopulationTemplateGroupVersion(
+        PopulationTemplateGroupId.Parse("template-group.manifest-binary"),
+        PopulationTemplateGroupVersionId.Parse("template-group.manifest-binary.v1"),
+        TestVersion(),
+        [
+            new WeightedPopulationTemplate(first, 1),
+            new WeightedPopulationTemplate(second, 1),
+        ],
+        crossTemplateBlendPolicy: new CrossTemplateBlendPolicy(1, 0.5));
+    var manifest = PopulationTemplateGroupService.GeneratePopulationManifest(
+        group,
+        3,
+        901,
+        "manifest.binary.generated.",
+        "external:manifest-binary.");
+    var buffer = TemplatePopulationManifestBinaryCodec.WriteToBuffer(manifest);
+    var roundTrip = TemplatePopulationManifestBinaryCodec.ReadFromBuffer(buffer, TestVersion());
+
+    AssertEqual(manifest, roundTrip);
+    AssertTrue(roundTrip.Entries.Any(entry => entry.WasBlended), "Binary manifest round trip must preserve blend provenance.");
+    AssertEqual(901UL, roundTrip.Entries[0].SampleSeed);
+    AssertThrows<GenomeSerializationException>(
+        () => TemplatePopulationManifestBinaryCodec.ReadFromBuffer(buffer[..4], TestVersion()));
+    AssertThrows<GenomeSerializationException>(
+        () => TemplatePopulationManifestBinaryCodec.ReadFromBuffer(buffer, SystemDefinitionVersion.Parse("other.1")));
+
+    using var stream = new MemoryStream();
+    TemplatePopulationManifestBinaryCodec.Write(stream, manifest);
+    stream.Position = 0;
+    AssertEqual(manifest, TemplatePopulationManifestBinaryCodec.Read(stream, TestVersion()));
 }
 
 static SystemDefinitionBuilder CreateMinimalHumanBuilder()
