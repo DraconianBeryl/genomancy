@@ -67,6 +67,13 @@ public static class GenomancyCli
 
         if (args.Length >= 2
             && string.Equals(args[0], "manifest", StringComparison.Ordinal)
+            && string.Equals(args[1], "regenerate", StringComparison.Ordinal))
+        {
+            return RegenerateManifest(args[2..], output, error);
+        }
+
+        if (args.Length >= 2
+            && string.Equals(args[0], "manifest", StringComparison.Ordinal)
             && string.Equals(args[1], "update", StringComparison.Ordinal))
         {
             return UpdateManifest(args[2..], output, error);
@@ -427,6 +434,53 @@ public static class GenomancyCli
         }
     }
 
+    private static int RegenerateManifest(string[] args, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 0 || args.Any(IsHelp))
+        {
+            WriteManifestRegenerateUsage(output);
+            return (int)GenomancyCliExitCode.Success;
+        }
+
+        ManifestRegenerateOptions options;
+
+        try
+        {
+            options = ManifestRegenerateOptions.Parse(args);
+        }
+        catch (ArgumentException exception)
+        {
+            error.WriteLine(exception.Message);
+            WriteManifestRegenerateUsage(error);
+            return (int)GenomancyCliExitCode.UsageError;
+        }
+
+        try
+        {
+            var regenerator = new ResourceTestResultManifestJsonFileRegenerator();
+            var manifest = regenerator.RegenerateFromBatchResults(
+                options.ManifestPath,
+                options.BatchResultPaths);
+
+            WriteManifestRegenerateSummary(manifest, options, output);
+
+            if (options.ReportPath is not null)
+            {
+                WriteTextFile(options.ReportPath, FormatManifest(manifest, ManifestShowOptions.Default(options.ManifestPath)));
+                output.WriteLine($"Report: {options.ReportPath}");
+            }
+
+            return manifest.Entries.Any(entry => entry.Summary.Status == ResourceTestStatus.Failed)
+                ? (int)GenomancyCliExitCode.TestFailure
+                : (int)GenomancyCliExitCode.Success;
+        }
+        catch (Exception exception) when (IsCliExecutionException(exception))
+        {
+            error.WriteLine($"Manifest regenerate failed: {exception.Message}");
+            return (int)GenomancyCliExitCode.ExecutionError;
+        }
+    }
+
     private static void WriteExecutionSummary(
         ResourceTestBatchRunJsonFileExecutionResult execution,
         TextWriter output)
@@ -460,6 +514,25 @@ public static class GenomancyCli
 
         output.WriteLine($"Manifest: {manifestPath}");
         output.WriteLine($"Mode: {mode}");
+        output.WriteLine($"Entries: {manifest.Entries.Count} total, {failedEntries} failed");
+    }
+
+    private static void WriteManifestRegenerateSummary(
+        ResourceTestResultManifest manifest,
+        ManifestRegenerateOptions options,
+        TextWriter output)
+    {
+        var failedEntries = manifest.Entries.Count(entry => entry.Summary.Status == ResourceTestStatus.Failed);
+
+        output.WriteLine($"Manifest: {options.ManifestPath}");
+        output.WriteLine("Mode: regenerate");
+        output.WriteLine($"Batch results: {options.BatchResultPaths.Count}");
+
+        foreach (var path in options.BatchResultPaths.Order(StringComparer.Ordinal))
+        {
+            output.WriteLine($"- {path}");
+        }
+
         output.WriteLine($"Entries: {manifest.Entries.Count} total, {failedEntries} failed");
     }
 
@@ -739,6 +812,7 @@ public static class GenomancyCli
         writer.WriteLine("  genomancy manifest show --manifest <path> [options]");
         writer.WriteLine("  genomancy manifest result show --manifest <path> --run-id <id> --result-root <path> [options]");
         writer.WriteLine("  genomancy manifest verify --manifest <path> --result-root <path> [options]");
+        writer.WriteLine("  genomancy manifest regenerate --manifest <path> --from-batch-result <path> [options]");
         writer.WriteLine("  genomancy manifest update --manifest <path> --from-batch-result <path> [options]");
         writer.WriteLine();
         writer.WriteLine("Commands:");
@@ -799,6 +873,15 @@ public static class GenomancyCli
         writer.WriteLine("Options:");
         writer.WriteLine("  --manifest-mode <upsert|append>");
         writer.WriteLine("  --report <path>               Write deterministic manifest report after update.");
+    }
+
+    private static void WriteManifestRegenerateUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  genomancy manifest regenerate --manifest <path> --from-batch-result <path> [--from-batch-result <path>...] [options]");
+        writer.WriteLine();
+        writer.WriteLine("Options:");
+        writer.WriteLine("  --report <path>               Write deterministic manifest report after regeneration.");
     }
 
     private static void WriteManifestResultShowUsage(TextWriter writer)
@@ -1100,6 +1183,57 @@ public static class GenomancyCli
                 manifestPath.Trim(),
                 batchResultPath.Trim(),
                 upsertManifest,
+                NormalizeOptionalPath(reportPath));
+        }
+    }
+
+    private sealed record ManifestRegenerateOptions(
+        string ManifestPath,
+        IReadOnlyList<string> BatchResultPaths,
+        string? ReportPath)
+    {
+        public static ManifestRegenerateOptions Parse(IReadOnlyList<string> args)
+        {
+            string? manifestPath = null;
+            var batchResultPaths = new List<string>();
+            string? reportPath = null;
+
+            for (var i = 0; i < args.Count; i++)
+            {
+                switch (args[i])
+                {
+                    case "--manifest":
+                        manifestPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    case "--from-batch-result":
+                        batchResultPaths.Add(ReadValue(args, ref i, args[i]));
+                        break;
+                    case "--report":
+                        reportPath = ReadValue(args, ref i, args[i]);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown option '{args[i]}'.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                throw new ArgumentException("Missing required option '--manifest'.");
+            }
+
+            var normalizedBatchResultPaths = batchResultPaths
+                .Select(NormalizeOptionalPath)
+                .OfType<string>()
+                .ToArray();
+
+            if (normalizedBatchResultPaths.Length == 0)
+            {
+                throw new ArgumentException("Missing required option '--from-batch-result'.");
+            }
+
+            return new ManifestRegenerateOptions(
+                manifestPath.Trim(),
+                Array.AsReadOnly(normalizedBatchResultPaths),
                 NormalizeOptionalPath(reportPath));
         }
     }

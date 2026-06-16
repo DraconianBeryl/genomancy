@@ -105,6 +105,7 @@ var tests = new (string Name, Action Test)[]
     ("Resource test run summary counts statuses diagnostics and packets", ResourceTestRunSummaryCountsStatusesDiagnosticsAndPackets),
     ("Resource test result manifest summarizes and orders entries", ResourceTestResultManifestSummarizesAndOrdersEntries),
     ("Resource test result manifest JSON round trips and validates", ResourceTestResultManifestJsonRoundTripsAndValidates),
+    ("Resource test result manifest regenerator derives entries from batch runs", ResourceTestResultManifestRegeneratorDerivesEntriesFromBatchRuns),
     ("Resource test result manifest merger appends and rejects duplicate incoming ids", ResourceTestResultManifestMergerAppendsAndRejectsDuplicateIncomingIds),
     ("Resource test result manifest merger upserts batch result entries", ResourceTestResultManifestMergerUpsertsBatchResultEntries),
     ("Resource test batch runner executes runs and builds manifest", ResourceTestBatchRunnerExecutesRunsAndBuildsManifest),
@@ -123,6 +124,7 @@ var tests = new (string Name, Action Test)[]
     ("JSON file storage persists resource test results outside core", JsonFileStoragePersistsResourceTestResultsOutsideCore),
     ("JSON file storage persists resource test result manifests outside core", JsonFileStoragePersistsResourceTestResultManifestsOutsideCore),
     ("JSON file storage updates resource test result manifests outside core", JsonFileStorageUpdatesResourceTestResultManifestsOutsideCore),
+    ("JSON file storage regenerates resource test result manifests outside core", JsonFileStorageRegeneratesResourceTestResultManifestsOutsideCore),
     ("JSON file storage persists resource test batch plans outside core", JsonFileStoragePersistsResourceTestBatchPlansOutsideCore),
     ("JSON file storage persists resource test batch results outside core", JsonFileStoragePersistsResourceTestBatchResultsOutsideCore),
     ("JSON file storage executes resource test batch plans outside core", JsonFileStorageExecutesResourceTestBatchPlansOutsideCore),
@@ -132,6 +134,7 @@ var tests = new (string Name, Action Test)[]
     ("CLI shows stored result and batch reports", CliShowsStoredResultAndBatchReports),
     ("CLI shows manifests with filters and resolved paths", CliShowsManifestsWithFiltersAndResolvedPaths),
     ("CLI updates manifests from stored batch results", CliUpdatesManifestsFromStoredBatchResults),
+    ("CLI regenerates manifests from stored batch results", CliRegeneratesManifestsFromStoredBatchResults),
     ("CLI shows manifest result by run id", CliShowsManifestResultByRunId),
     ("CLI verifies manifest result files", CliVerifiesManifestResultFiles),
     ("CLI reports manifest verification integrity failures", CliReportsManifestVerificationIntegrityFailures),
@@ -2328,6 +2331,43 @@ static void ResourceTestResultManifestJsonRoundTripsAndValidates()
             """u8));
 }
 
+static void ResourceTestResultManifestRegeneratorDerivesEntriesFromBatchRuns()
+{
+    var batch = CreateBatchResultWithStaleManifestSummary();
+    var regenerated = ResourceTestResultManifestRegenerator.FromBatchResult(batch);
+    var staleEntry = batch.Runs[0].ManifestEntry;
+    var regeneratedEntry = regenerated.Entries.Single(entry => entry.RunId == staleEntry.RunId);
+
+    AssertEqual(ResourceTestStatus.Passed, staleEntry.Summary.Status);
+    AssertEqual(ResourceTestStatus.Failed, regeneratedEntry.Summary.Status);
+    AssertEqual(staleEntry.CompletedAtUtc, regeneratedEntry.CompletedAtUtc);
+    AssertEqual(staleEntry.Label, regeneratedEntry.Label);
+    AssertTrue(
+        regeneratedEntry.Tags.SequenceEqual(staleEntry.Tags),
+        "Regeneration must preserve manifest metadata while deriving summary from the run result.");
+
+    var multi = ResourceTestResultManifestRegenerator.FromBatchResults(
+    [
+        batch,
+        CreateSingleRunBatchResult(
+            "run.manifest-regenerate.passed",
+            "results/passed.json",
+            ResourceTestStatus.Passed),
+    ]);
+
+    AssertEqual(2, multi.Entries.Count);
+    AssertEqual("run.manifest-regenerate.failed", multi.Entries[0].RunId.Value);
+    AssertEqual("run.manifest-regenerate.passed", multi.Entries[1].RunId.Value);
+    AssertThrows<ArgumentException>(() => ResourceTestResultManifestRegenerator.FromBatchResults(
+    [
+        batch,
+        CreateSingleRunBatchResult(
+            "run.manifest-regenerate.failed",
+            "results/duplicate.json",
+            ResourceTestStatus.Passed),
+    ]));
+}
+
 static void ResourceTestResultManifestMergerAppendsAndRejectsDuplicateIncomingIds()
 {
     var existing = new ResourceTestResultManifest(
@@ -3102,6 +3142,66 @@ static void JsonFileStorageUpdatesResourceTestResultManifestsOutsideCore()
     }
 }
 
+static void JsonFileStorageRegeneratesResourceTestResultManifestsOutsideCore()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-json-file-storage-tests",
+        $"{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(root, "resource-test-result-manifest.json");
+    var firstBatchPath = Path.Combine(root, "first-batch-result.json");
+    var secondBatchPath = Path.Combine(root, "second-batch-result.json");
+    var regenerator = new ResourceTestResultManifestJsonFileRegenerator();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var batchStore = ResourceTestBatchRunResultJsonFileStore.Create();
+    var staleManifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.manifest-regenerate.stale"),
+            "results/stale.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.manifest-regenerate.stale"),
+                ResourceTestStatus.Passed)),
+    ]);
+    var firstBatch = CreateBatchResultCodecSample();
+    var secondBatch = CreateSingleRunBatchResult(
+        "run.manifest-regenerate.extra",
+        "results/extra.json",
+        ResourceTestStatus.Passed);
+
+    try
+    {
+        manifestStore.Save(manifestPath, staleManifest);
+        batchStore.Save(firstBatchPath, firstBatch);
+        batchStore.Save(secondBatchPath, secondBatch);
+
+        var regenerated = regenerator.RegenerateFromBatchResults(
+            manifestPath,
+            [firstBatchPath, secondBatchPath]);
+        var loaded = manifestStore.Load(manifestPath);
+
+        AssertEqual(
+            ResourceTestResultManifestJsonCodec.WriteToText(regenerated),
+            ResourceTestResultManifestJsonCodec.WriteToText(loaded));
+        AssertEqual(3, loaded.Entries.Count);
+        AssertEqual("run.batch-result.failed", loaded.Entries[0].RunId.Value);
+        AssertEqual("run.batch-result.passed", loaded.Entries[1].RunId.Value);
+        AssertEqual("run.manifest-regenerate.extra", loaded.Entries[2].RunId.Value);
+        AssertTrue(
+            loaded.Entries.All(entry => entry.RunId.Value != "run.manifest-regenerate.stale"),
+            "Regeneration must overwrite stale manifest contents instead of appending.");
+        AssertEqual(ResourceTestStatus.Failed, loaded.Entries[0].Summary.Status);
+        AssertThrows<ArgumentException>(() => regenerator.RegenerateFromBatchResults(manifestPath, []));
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
 static void JsonFileStoragePersistsResourceTestBatchPlansOutsideCore()
 {
     var path = Path.Combine(
@@ -3712,6 +3812,104 @@ static void CliUpdatesManifestsFromStoredBatchResults()
         AssertEqual(2, rerunManifest.Entries.Count);
         AssertEqual((int)GenomancyCliExitCode.ExecutionError, appendExitCode);
         AssertTrue(appendError.ToString().Contains("Manifest update failed:", StringComparison.Ordinal), appendError.ToString());
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void CliRegeneratesManifestsFromStoredBatchResults()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "genomancy-cli-tests",
+        $"{Guid.NewGuid():N}");
+    var firstBatchResultPath = Path.Combine(root, "batch", "first-batch-result.json");
+    var secondBatchResultPath = Path.Combine(root, "batch", "second-batch-result.json");
+    var duplicateBatchResultPath = Path.Combine(root, "batch", "duplicate-batch-result.json");
+    var manifestPath = Path.Combine(root, "manifests", "manifest.json");
+    var reportPath = Path.Combine(root, "reports", "regenerated-manifest.txt");
+    var output = new StringWriter();
+    var error = new StringWriter();
+    var batchStore = ResourceTestBatchRunResultJsonFileStore.Create();
+    var manifestStore = ResourceTestResultManifestJsonFileStore.Create();
+    var staleManifest = new ResourceTestResultManifest(
+    [
+        ResourceTestResultManifestEntry.FromResult(
+            ResourceTestId.Parse("run.cli-regenerate.stale"),
+            "results/stale.json",
+            CreateManifestSampleResult(
+                ResourceTestId.Parse("resource-test.cli-regenerate.stale"),
+                ResourceTestStatus.Passed)),
+    ]);
+
+    try
+    {
+        manifestStore.Save(manifestPath, staleManifest);
+        batchStore.Save(firstBatchResultPath, CreateBatchResultCodecSample());
+        batchStore.Save(
+            secondBatchResultPath,
+            CreateSingleRunBatchResult(
+                "run.cli-regenerate.extra",
+                "results/extra.json",
+                ResourceTestStatus.Passed));
+        batchStore.Save(
+            duplicateBatchResultPath,
+            CreateSingleRunBatchResult(
+                "run.batch-result.failed",
+                "results/duplicate.json",
+                ResourceTestStatus.Passed));
+
+        var exitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "regenerate",
+                "--manifest",
+                manifestPath,
+                "--from-batch-result",
+                firstBatchResultPath,
+                "--from-batch-result",
+                secondBatchResultPath,
+                "--report",
+                reportPath,
+            ],
+            output,
+            error);
+        var manifest = manifestStore.Load(manifestPath);
+
+        AssertEqual((int)GenomancyCliExitCode.TestFailure, exitCode);
+        AssertEqual("", error.ToString());
+        AssertTrue(output.ToString().Contains("Mode: regenerate", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Batch results: 2", StringComparison.Ordinal), output.ToString());
+        AssertTrue(output.ToString().Contains("Entries: 3 total, 1 failed", StringComparison.Ordinal), output.ToString());
+        AssertEqual(3, manifest.Entries.Count);
+        AssertTrue(
+            manifest.Entries.All(entry => entry.RunId.Value != "run.cli-regenerate.stale"),
+            "CLI regeneration must overwrite existing manifest contents.");
+        AssertTrue(File.ReadAllText(reportPath).Contains("- run.cli-regenerate.extra: Passed", StringComparison.Ordinal), "Regenerate report must include all regenerated entries.");
+
+        var duplicateError = new StringWriter();
+        var duplicateExitCode = GenomancyCli.Run(
+            [
+                "manifest",
+                "regenerate",
+                "--manifest",
+                manifestPath,
+                "--from-batch-result",
+                firstBatchResultPath,
+                "--from-batch-result",
+                duplicateBatchResultPath,
+            ],
+            new StringWriter(),
+            duplicateError);
+
+        AssertEqual((int)GenomancyCliExitCode.ExecutionError, duplicateExitCode);
+        AssertTrue(duplicateError.ToString().Contains("Manifest regenerate failed:", StringComparison.Ordinal), duplicateError.ToString());
+        AssertTrue(duplicateError.ToString().Contains("duplicate run ids", StringComparison.OrdinalIgnoreCase), duplicateError.ToString());
     }
     finally
     {
@@ -4700,6 +4898,77 @@ static ResourceTestRunResult CreateManifestSampleResult(
             status,
             diagnostics ?? [],
             tags: ["manifest"]),
+    ]);
+}
+
+static ResourceTestBatchRunResult CreateSingleRunBatchResult(
+    string runId,
+    string resultPath,
+    ResourceTestStatus status)
+{
+    var parsedRunId = ResourceTestId.Parse(runId);
+    var result = CreateManifestSampleResult(
+        ResourceTestId.Parse($"{runId}.resource-test"),
+        status,
+        status == ResourceTestStatus.Failed
+            ?
+            [
+                new ResourceTestDiagnostic(
+                    ResourceTestSeverity.Error,
+                    "SINGLE_RUN_FAILURE",
+                    $"tests/{runId}/failure",
+                    "Single run failure."),
+            ]
+            : null);
+
+    return new ResourceTestBatchRunResult(
+    [
+        new ResourceTestBatchRunRecord(
+            parsedRunId,
+            resultPath,
+            result,
+            ResourceTestResultManifestEntry.FromResult(
+                parsedRunId,
+                resultPath,
+                result,
+                new DateTimeOffset(2026, 06, 15, 16, 00, 00, TimeSpan.Zero),
+                label: $"Single run {runId}",
+                tags: ["single-run"])),
+    ]);
+}
+
+static ResourceTestBatchRunResult CreateBatchResultWithStaleManifestSummary()
+{
+    var runId = ResourceTestId.Parse("run.manifest-regenerate.failed");
+    var resultPath = "results/failed.json";
+    var failed = CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest-regenerate.failed"),
+        ResourceTestStatus.Failed,
+        [
+            new ResourceTestDiagnostic(
+                ResourceTestSeverity.Error,
+                "REGENERATE_FAILURE",
+                "tests/manifest-regenerate/failure",
+                "Regeneration failure."),
+        ]);
+    var stalePassedSummary = ResourceTestRunSummary.FromResult(CreateManifestSampleResult(
+        ResourceTestId.Parse("resource-test.manifest-regenerate.stale"),
+        ResourceTestStatus.Passed));
+    var staleEntry = new ResourceTestResultManifestEntry(
+        runId,
+        resultPath,
+        stalePassedSummary,
+        new DateTimeOffset(2026, 06, 15, 17, 00, 00, TimeSpan.FromHours(-5)),
+        label: "Stale manifest entry",
+        tags: ["regenerate", "stale"]);
+
+    return new ResourceTestBatchRunResult(
+    [
+        new ResourceTestBatchRunRecord(
+            runId,
+            resultPath,
+            failed,
+            staleEntry),
     ]);
 }
 
