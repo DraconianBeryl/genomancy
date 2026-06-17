@@ -7,14 +7,18 @@ model, invariants, deterministic mechanics, serialization contracts, and policy
 interfaces as they are implemented.
 
 `Genomancy.Storage.Json` is an optional file-storage adapter. It depends on
-`Genomancy.Core`, uses the core JSON codecs, and owns filesystem path handling
-for JSON resources. Core callers can continue using only streams, buffers, and
-text without taking a filesystem dependency.
+`Genomancy.Core` and `Genomancy.Storage.Common`, uses the core JSON codecs, and
+owns filesystem path handling for JSON resources. Core callers can continue
+using only streams, buffers, and text without taking a filesystem dependency.
 
 `Genomancy.Storage.Binary` is an optional file-storage adapter. It depends on
-`Genomancy.Core`, uses the core binary codecs, and owns filesystem path handling
-for binary resources. Core remains responsible for binary stream/buffer codecs,
-not for paths or repositories.
+`Genomancy.Core` and `Genomancy.Storage.Common`, uses the core binary codecs,
+and owns filesystem path handling for binary resources. Core remains responsible
+for binary stream/buffer codecs, not for paths or repositories.
+
+`Genomancy.Storage.Common` is optional storage infrastructure used by concrete
+storage modules for root-scoped path resolution, atomic temporary-file writes,
+and file content hashing. It does not depend on `Genomancy.Core`.
 
 The following boundaries are reserved for later slices:
 
@@ -30,6 +34,8 @@ Allowed dependencies:
 
 - Optional adapters depend on `Genomancy.Core`.
 - Optional storage modules depend on `Genomancy.Core`.
+- Optional storage modules may depend on `Genomancy.Storage.Common`.
+- `Genomancy.Storage.Common` depends only on framework libraries.
 - `Genomancy.Storage.Json` depends on `Genomancy.Core`.
 - `Genomancy.Storage.Binary` depends on `Genomancy.Core`.
 - Resource testing tools depend on `Genomancy.Core`.
@@ -42,6 +48,8 @@ Disallowed dependencies:
   providers.
 - `Genomancy.Core` must not reference `Genomancy.Storage.Json`.
 - `Genomancy.Core` must not reference `Genomancy.Storage.Binary`.
+- `Genomancy.Storage.Common` must not reference `Genomancy.Core` or concrete
+  storage modules.
 - `Genomancy.Core` must not depend on test frameworks or test projects.
 - `Genomancy.Core` must not own a filesystem layout, database, cloud service, or
   save-game repository.

@@ -3,26 +3,22 @@ using Genomancy.Core.Genome;
 using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
+using Genomancy.Storage.Common;
 
 namespace Genomancy.Storage.Json;
 
 public sealed class JsonFileStore
 {
-    private readonly string _rootDirectory;
     private readonly JsonFileStoreOptions _options;
+    private readonly StoragePathResolver _resolver;
 
     public JsonFileStore(string rootDirectory, JsonFileStoreOptions? options = null)
     {
-        if (string.IsNullOrWhiteSpace(rootDirectory))
-        {
-            throw new ArgumentException("Root directory must not be empty.", nameof(rootDirectory));
-        }
-
-        _rootDirectory = Path.GetFullPath(rootDirectory);
+        _resolver = new StoragePathResolver(rootDirectory, "JSON");
         _options = options ?? new JsonFileStoreOptions();
     }
 
-    public string RootDirectory => _rootDirectory;
+    public string RootDirectory => _resolver.RootDirectory;
 
     public JsonFileWriteResult WriteGenomeVersion(string relativePath, GenomeVersion version, bool? overwrite = null)
     {
@@ -134,51 +130,22 @@ public sealed class JsonFileStore
     private JsonFileWriteResult Write(string relativePath, Action<Stream> write, bool? overwrite)
     {
         var fullPath = ResolveRelativePath(relativePath);
-        var directory = Path.GetDirectoryName(fullPath)
-            ?? throw new JsonFileStoreException($"Path '{relativePath}' does not have a parent directory.");
-
-        if (_options.CreateDirectories)
-        {
-            Directory.CreateDirectory(directory);
-        }
-        else if (!Directory.Exists(directory))
-        {
-            throw new JsonFileStoreException($"Directory '{directory}' does not exist.");
-        }
-
-        var allowOverwrite = overwrite ?? _options.OverwriteExisting;
-
-        if (!allowOverwrite && File.Exists(fullPath))
-        {
-            throw new JsonFileStoreException($"File '{fullPath}' already exists.");
-        }
-
-        var temporaryPath = CreateTemporaryPath(fullPath);
 
         try
         {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None))
-            {
-                write(stream);
-            }
-
-            File.Move(temporaryPath, fullPath, allowOverwrite);
-            return new JsonFileWriteResult(fullPath, new FileInfo(fullPath).Length);
+            var result = StorageFileOperations.Write(
+                fullPath,
+                write,
+                new StoragePathPolicy(
+                    "JSON",
+                    _options.CreateDirectories,
+                    overwrite ?? _options.OverwriteExisting,
+                    _options.TemporaryFileSuffix));
+            return new JsonFileWriteResult(result.FullPath, result.ByteCount, result.Sha256Hex);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (StorageFileException exception)
         {
-            throw new JsonFileStoreException($"Failed to write JSON resource file '{fullPath}'.", exception);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
+            throw new JsonFileStoreException(exception.Message, exception);
         }
     }
 
@@ -188,52 +155,23 @@ public sealed class JsonFileStore
 
         try
         {
-            using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return read(stream);
+            return StorageFileOperations.Read(fullPath, read, "JSON");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (StorageFileException exception)
         {
-            throw new JsonFileStoreException($"Failed to read JSON resource file '{fullPath}'.", exception);
+            throw new JsonFileStoreException(exception.Message, exception);
         }
     }
 
     private string ResolveRelativePath(string relativePath)
     {
-        if (string.IsNullOrWhiteSpace(relativePath))
+        try
         {
-            throw new ArgumentException("Relative path must not be empty.", nameof(relativePath));
+            return _resolver.ResolveRelativePath(relativePath);
         }
-
-        if (Path.IsPathFullyQualified(relativePath) || Path.IsPathRooted(relativePath))
+        catch (StoragePathException exception)
         {
-            throw new JsonFileStoreException("JSON storage paths must be relative to the store root.");
+            throw new JsonFileStoreException(exception.Message, exception);
         }
-
-        var segments = relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
-
-        if (segments.Any(segment => segment is "" or "." or ".."))
-        {
-            throw new JsonFileStoreException("JSON storage paths must not contain empty, current-directory, or parent-directory segments.");
-        }
-
-        var fullPath = Path.GetFullPath(Path.Combine(_rootDirectory, relativePath));
-        var rootWithSeparator = _rootDirectory.EndsWith(Path.DirectorySeparatorChar)
-            ? _rootDirectory
-            : _rootDirectory + Path.DirectorySeparatorChar;
-
-        if (!fullPath.StartsWith(rootWithSeparator, StringComparison.Ordinal))
-        {
-            throw new JsonFileStoreException("JSON storage path escapes the store root.");
-        }
-
-        return fullPath;
-    }
-
-    private string CreateTemporaryPath(string fullPath)
-    {
-        var directory = Path.GetDirectoryName(fullPath)
-            ?? throw new JsonFileStoreException($"Path '{fullPath}' does not have a parent directory.");
-        var fileName = Path.GetFileName(fullPath);
-        return Path.Combine(directory, $"{fileName}.{Guid.NewGuid():N}{_options.TemporaryFileSuffix}");
     }
 }

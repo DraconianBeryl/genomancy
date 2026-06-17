@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Genomancy.Core\Genomancy.Core.csproj" />
     <ProjectReference Include="..\..\src\Genomancy.Storage.Binary\Genomancy.Storage.Binary.csproj" />
+    <ProjectReference Include="..\..\src\Genomancy.Storage.Common\Genomancy.Storage.Common.csproj" />
     <ProjectReference Include="..\..\src\Genomancy.Storage.Json\Genomancy.Storage.Json.csproj" />
   </ItemGroup>
 

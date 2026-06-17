@@ -14,6 +14,7 @@ using Genomancy.Core.Serialization;
 using Genomancy.Core.Templates;
 using Genomancy.Core.Variants;
 using Genomancy.Storage.Binary;
+using Genomancy.Storage.Common;
 using Genomancy.Storage.Json;
 
 var tests = new (string Name, Action Test)[]
@@ -21,6 +22,7 @@ var tests = new (string Name, Action Test)[]
     ("Core assembly exposes stable name", CoreAssemblyExposesStableName),
     ("Core assembly is Godot independent", CoreAssemblyIsGodotIndependent),
     ("Core assembly has no forbidden dependencies", CoreAssemblyHasNoForbiddenDependencies),
+    ("Storage common assembly stays independent from core", StorageCommonAssemblyStaysIndependentFromCore),
     ("Binary storage assembly preserves core dependency boundary", BinaryStorageAssemblyPreservesCoreDependencyBoundary),
     ("JSON storage assembly preserves core dependency boundary", JsonStorageAssemblyPreservesCoreDependencyBoundary),
     ("Resource ids validate and compare by stable value", ResourceIdsValidateAndCompareByStableValue),
@@ -167,6 +169,19 @@ static void CoreAssemblyHasNoForbiddenDependencies()
             throw new InvalidOperationException($"Forbidden core dependency found: {reference}");
         }
     }
+}
+
+static void StorageCommonAssemblyStaysIndependentFromCore()
+{
+    var references = typeof(StoragePathResolver)
+        .Assembly
+        .GetReferencedAssemblies()
+        .Select(reference => reference.Name ?? string.Empty)
+        .ToArray();
+
+    AssertTrue(!references.Contains("Genomancy.Core"), "Storage common module must not depend on Genomancy.Core.");
+    AssertTrue(!references.Contains("Genomancy.Storage.Json"), "Storage common module must not depend on JSON storage.");
+    AssertTrue(!references.Contains("Genomancy.Storage.Binary"), "Storage common module must not depend on binary storage.");
 }
 
 static void BinaryStorageAssemblyPreservesCoreDependencyBoundary()
@@ -1997,6 +2012,11 @@ static void BinaryFileStorageRoundTripsSerializedResources()
         AssertTrue(groupWrite.ByteCount > 0, "Template-group binary write should report byte count.");
         AssertTrue(manifestWrite.ByteCount > 0, "Manifest binary write should report byte count.");
         AssertTrue(variantWrite.ByteCount > 0, "Variant binary write should report byte count.");
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(genomeWrite.FullPath), genomeWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(templateWrite.FullPath), templateWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(groupWrite.FullPath), groupWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(manifestWrite.FullPath), manifestWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(variantWrite.FullPath), variantWrite.Sha256Hex);
         AssertGenomeVersionsEqual(genome, store.ReadGenomeVersion("genomes/storage-genome.gbin", TestVersion()));
         AssertEqual(template, store.ReadPopulationTemplate("templates/storage-template.tbin", TestVersion()));
         AssertEqual(group, store.ReadPopulationTemplateGroup("template-groups/storage-group.tgbin", TestVersion()));
@@ -2080,6 +2100,11 @@ static void JsonFileStorageRoundTripsSerializedResources()
         AssertTrue(groupWrite.ByteCount > 0, "Template-group JSON write should report byte count.");
         AssertTrue(manifestWrite.ByteCount > 0, "Manifest JSON write should report byte count.");
         AssertTrue(variantWrite.ByteCount > 0, "Variant JSON write should report byte count.");
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(genomeWrite.FullPath), genomeWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(templateWrite.FullPath), templateWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(groupWrite.FullPath), groupWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(manifestWrite.FullPath), manifestWrite.Sha256Hex);
+        AssertEqual(StorageFileOperations.ComputeSha256Hex(variantWrite.FullPath), variantWrite.Sha256Hex);
         AssertGenomeVersionsEqual(genome, store.ReadGenomeVersion("genomes/storage-genome.json", TestVersion()));
         AssertEqual(template, store.ReadPopulationTemplate("templates/storage-template.json", TestVersion()));
         AssertEqual(group, store.ReadPopulationTemplateGroup("template-groups/storage-group.json", TestVersion()));

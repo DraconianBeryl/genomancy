@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Genomancy.Core\Genomancy.Core.csproj" />
+    <ProjectReference Include="..\Genomancy.Storage.Common\Genomancy.Storage.Common.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
