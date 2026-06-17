@@ -37,11 +37,15 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 - Variable ploidy, multi-parent contribution, mosaicism/chimerism, linkage, dependencies, generated complements, and nonstandard reproduction.
 - Immutable population-template and template-group versions, blending, sampling, and simulation.
 - Stable JSON and binary serialization at multiple resource/state granularities.
+- Complete-system export/import as core serialization over streams, buffers, byte arrays, or text data.
 - In-memory stream, buffer, byte-array, and text serialization APIs in the core library.
 - Optional non-core storage modules for JSON files, custom binary files, and SQLite.
+- System-definition migration support for save compatibility through policy statements and optional host-provided callbacks.
+- Resource metadata and tags required by Genomancy for identity, serialization, diagnostics, version compatibility, testing, policy selection, and resource selection.
 - A first-class designer-authored resource testing framework, distinct from implementation tests.
 - Deterministic behavior where seeded randomness is involved, including separated random streams where required.
-- A thin, optional Godot integration layer that adapts the engine-neutral core without moving domain rules into Godot types.
+- A thin, optional Godot runtime integration layer that adapts the engine-neutral core without moving domain rules into Godot types.
+- A separate Godot editor integration plugin is planned but deferred.
 
 ### Explicitly out of scope
 
@@ -50,6 +54,9 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 - Ecological selection, survival selection, mating behavior, geography, economy, and culture unless supplied as external context.
 - A mandatory database, filesystem layout, cloud service, asset database, save repository, networking model, user interface, or game-specific entity model in the core library.
 - Content management for external resource definitions, including authoritative corpus discovery, source-control status, content history, merge resolution, release membership, or completeness guarantees for project files, directories, repositories, editor workspaces, databases, or archives.
+- Golden-sample approval workflows in the core library.
+- Arbitrary database semantics, authoritative storage indexes, report-history storage, or source-control-aware changed-resource discovery as genetics-system behavior.
+- Editor integration inside the core library.
 - Godot-specific inheritance or serialization as a requirement of core domain objects.
 - Unconstrained mutation or automatic invention of body structures outside authored policies.
 
@@ -61,6 +68,15 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-05 | Require Godot usability without exclusive Godot coupling. | Project request | Core assemblies must not reference Godot; integration belongs in an adapter assembly. | Accepted |
 | 2026-06-05 | Require incremental-refinement planning. | Project request | Near-term slices have detailed deliverables/tests; distant slices remain outcome-level and must be refined before work starts. | Accepted |
 | 2026-06-17 | Clarify that Genomancy storage modules are not content management systems for external resource definitions. | Project clarification | Storage modules must faithfully load supplied resources and may validate the loaded graph, but external systems own authoritative corpus completeness, source control, history, merge resolution, and release membership. | Accepted |
+| 2026-06-17 | Clarify complete-system export/import as serialization, with storage modules owning stored-byte handling. | Project clarification | Core serializes/deserializes complete systems from streams/buffers; storage modules locate, read, write, and stream persisted serialized data. | Accepted |
+| 2026-06-17 | Bound migrations to save compatibility across system-definition versions. | Project clarification | Migrations should normally be policy statements with optional host callbacks; they do not require saves to embed complete system definitions. | Accepted |
+| 2026-06-17 | Bound storage transactions and indexing. | Project clarification | Transactions support atomic logical writes; indexes are efficient access aids using verified metadata/tags and are not authoritative catalogs. | Accepted |
+| 2026-06-17 | Remove golden-sample approval workflows from core requirements. | Project clarification | Core may emit regenerated candidate output, but acceptance/approval workflows belong to external tools. | Accepted |
+| 2026-06-17 | Scope affected/changed-resource test selection to loaded resources. | Project clarification | Test selection may use externally supplied selected/changed resource IDs and the currently loaded graph, not source-control or workspace discovery. | Accepted |
+| 2026-06-17 | Separate Godot runtime support from deferred Godot editor integration. | Project clarification | Runtime adapter remains planned; editor plugin is a separate deferred integration. | Accepted |
+| 2026-06-17 | Bound resource metadata and add resource tags. | Project clarification | Metadata is limited to Genomancy needs; tags may participate in policy, test, validation, reachability, and selection/matching behavior. | Accepted |
+| 2026-06-17 | Replace audit terminology with runtime history diagnostics. | Project clarification | Genome history is for runtime genetic-state changes, including designer-authored past events in genome records, not design-change audit trails. | Accepted |
+| 2026-06-17 | Clarify reports as transient outputs. | Project clarification | Reports are produced for callers/tools/CI/storage modules; the core runner does not store report history. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -77,6 +93,12 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
 | ARC-010 | The exact target framework, binary encoding, and SQLite provider remain open until Slice 0/serialization refinement. | These choices require compatibility and maintenance evaluation. | Open |
 | ARC-011 | Optional storage modules load and save supplied serialized resources but do not own external content-management responsibilities. | Keeps Genomancy focused on genetics resource loading/validation and leaves authoritative corpus management to version control, asset pipelines, editor databases, or game-specific systems. | Accepted |
+| ARC-012 | Runtime package export/import is complete-system serialization in core; persisted-data handling belongs to storage modules or external tools. | Preserves stable core formats without making core responsible for files, databases, archives, repositories, or distribution packages. | Accepted |
+| ARC-013 | Migrations are save-compatibility transforms between system-definition versions, preferably policy-defined and optionally host-callback-backed. | Supports game updates without requiring every save to embed a full genetics system definition. | Accepted |
+| ARC-014 | Storage transactions provide atomic logical writes, and storage indexes are non-authoritative access aids. | Supports database-backed modules and efficient persistence without turning indexes into content catalogs. | Accepted |
+| ARC-015 | Golden-sample approval, report-history storage, and source-control changed-resource discovery are external workflow concerns. | Keeps the core test runner focused on deterministic execution, candidate outputs, diagnostics, and transient reports. | Accepted |
+| ARC-016 | Godot editor integration is a separate deferred plugin from Godot runtime support. | Keeps runtime adapter scope narrow and avoids moving editor workflows into core. | Accepted |
+| ARC-017 | Resource tags are Genomancy metadata and may be used by tag-aware policies, tests, validation, reachability, and selection. | Provides structured selection/matching without broad asset metadata management. | Accepted |
 
 ## Requirements register
 
@@ -84,7 +106,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 
 | ID | Requirement family | Source sections | Status | Planned slice | Verification |
 |---|---|---:|---|---|---|
-| REQ-MODE | Fixed design/runtime operating mode, startup ordering, validation, freeze, and system-definition versions. | 3, 27, 30 | Planned | 1 | Unit + integration |
+| REQ-MODE | Fixed design/runtime operating mode, startup ordering, validation, freeze, system-definition versions, and migration-before-freeze boundary. | 3, 27, 30 | Planned | 1 | Unit + integration |
 | REQ-MODE-FREEZE | Runtime definitions become immutable after successful validation/migration and before ordinary runtime state loads/operations. | 3.3-3.6, 28.3 | Planned | 1 | Unit + negative tests |
 | REQ-ID | Stable identifiers and compatibility references for authored resources and serialized state. | 3.6, 31.3 | Planned | 1 | Unit + serialization tests |
 | REQ-MODEL | Core object hierarchy from allele/value through nested population structures. | 4, 24 | Planned | 1-2 | Unit tests |
@@ -108,13 +130,13 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TEMPLATE | Immutable statistical templates, random generation, blending, biased inheritance, mutation, and simulation. | 21, 28.2, 28.11 | Planned | 10 | Unit + statistical tests |
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | Planned | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | Planned | 10 | Unit tests |
-| REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | Planned | 1 onward | Unit + coverage tests |
-| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 12-13 | Self-tests + integration |
+| REQ-POLICY | Explicit policy categories, granularity, metadata/tag-aware inputs where opted in, and outputs. | 25 | Planned | 1 onward | Unit + coverage tests |
+| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, transient reports, and runners; core excludes golden-sample approval workflows. | 26, 27 | Planned | 12-13 | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | Planned | 4, 12 | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | Planned | 1, 12-13 | Validation + resource tests |
-| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | Planned | 2 onward; finalized 14 | Round-trip + compatibility |
-| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core and are not content management systems for external resource definitions. | 31.4-31.8 | Planned | 14 | Integration tests |
-| REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 15 | Build + adapter tests |
+| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including complete-system export/import, versions, variants, templates, tests, and failure packets. | 31.1-31.3 | Planned | 2 onward; finalized 14 | Round-trip + compatibility |
+| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core, provide atomic logical writes/index aids where applicable, and are not content management systems for external resource definitions. | 31.4-31.8 | Planned | 14 | Integration tests |
+| REQ-GODOT | Optional Godot runtime adapter consumes core APIs without redefining genetics behavior; Godot editor plugin is separate and deferred. | Project scope injection | Planned | 15 runtime; editor deferred | Build + adapter tests |
 
 ## Incremental implementation plan
 
@@ -197,7 +219,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Implement immutable genome versions containing system-definition version, stable version ID, parent-version reference where applicable, and genome state.
 - Implement a mutable or replacement-based current genome copy that is explicitly derived from a permanent version.
 - Implement controlled commit behavior that creates a new immutable version; repeated temporary changes do not auto-commit.
-- Implement historical comparison metadata sufficient for later repair/audit features without committing to full mutation history shape.
+- Implement historical comparison metadata sufficient for later repair and runtime history diagnostics without committing to full mutation history shape.
 - Define versioned JSON envelopes and a preliminary binary codec for the Slice 2 model using streams/buffers only.
 - Ensure deserialization validates system-definition version compatibility through an explicit compatibility result/hook.
 
@@ -347,15 +369,19 @@ Refine and likely subdivide before implementation. Build designer-authored test 
 
 ### Slice 14 - Serialization hardening and optional storage modules
 
-Refine before implementation. Finalize compatibility contracts and granular JSON/binary formats, then add non-core JSON-file, custom-binary-file, and SQLite storage modules with migrations and test-fixture support.
+Refine before implementation. Finalize compatibility contracts and granular JSON/binary formats, including complete-system serialization, then add non-core JSON-file, custom-binary-file, and SQLite storage modules with migration orchestration, atomic logical writes, non-authoritative indexing, and test-fixture support.
 
 **Requirements targeted:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
 
-### Slice 15 - Godot adapter and packaging
+### Slice 15 - Godot runtime adapter
 
-Refine against the selected Godot/.NET versions. Add a thin adapter for Godot authoring/runtime workflows, package import/export, diagnostics, and engine-facing conversions while preserving a Godot-free core.
+Refine against the selected Godot/.NET versions. Add a thin runtime adapter for Godot runtime workflows, package import/export handoff, diagnostics, and engine-facing conversions while preserving a Godot-free core.
 
 **Requirements targeted:** REQ-GODOT, REQ-MODE, REQ-SERIAL.
+
+### Deferred - Godot editor plugin
+
+A separate Godot editor plugin may later support authoring workflows, resource editing integration, editor-side test execution, diagnostics display, and golden-sample approval workflows. This is not part of core or the runtime adapter slice.
 
 ### Later hardening and release work
 

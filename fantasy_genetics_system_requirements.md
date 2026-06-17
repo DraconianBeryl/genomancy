@@ -211,6 +211,7 @@ Design mode may allow creation, modification, replacement, or removal of:
 - test resources
 - validation rules
 - resource metadata
+- resource tags
 - migrations
 
 Design mode may also allow **system-definition mutation**: changes to the authored genetics system itself.
@@ -336,6 +337,18 @@ Saved genomes should record the system-definition version they were created unde
 
 If a saved genome is loaded under a different system-definition version, migration or compatibility validation may be required.
 
+## 3.7 System migration boundary
+
+System migrations primarily exist to let a game update its genetics system definition while remaining compatible with saved genome, individual, template, and runtime state created under older system-definition versions.
+
+A save file is not required to embed the entire genetics system definition. A game may choose to embed a complete genetics system definition in a save if that is appropriate for its architecture, but compatibility must also be possible when saves store references to external system-definition versions.
+
+Migration behavior should normally be represented as authored policy statements that describe how serialized state or resource references are transformed between system-definition versions.
+
+When policy statements are insufficient, a migration may provide an explicit callback or extension point to external code. Such callbacks are part of the migration interface supplied by the host application or tool; they do not make Genomancy responsible for project-wide content management, source-control history, or arbitrary save-system behavior.
+
+Runtime migrations must be explicitly packaged or supplied before runtime freeze. They may adapt loaded state to the frozen system definition, but they must not change authored interpretation rules after freeze.
+
 ---
 
 # 4. Core terminology
@@ -387,7 +400,7 @@ Genome versions are used for:
 - determining original state
 - distinguishing temporary expression from permanent mutation
 - allowing policy-specific restoration
-- audit and diagnostics
+- runtime history diagnostics
 
 A permanent genome mutation creates a new genome version unless policy states otherwise.
 
@@ -1805,7 +1818,7 @@ Permanent genome versions are immutable.
 
 A new permanent mutation normally creates a new immutable genome version.
 
-Historical versions remain available for repair, reversion, comparison, and audit.
+Historical versions remain available for repair, reversion, comparison, and runtime history diagnostics.
 
 ## 16.2 Version creation
 
@@ -2366,6 +2379,10 @@ Policy participation should generally be declared at gene or group level.
 
 Specific changes or values are usually allele-level.
 
+Resource metadata is limited to information needed by Genomancy for resource identity, serialization, diagnostics, version compatibility, testing, policy selection, and resource selection.
+
+Resource tags are supported metadata. Policies, tests, validation, reachability checks, and selection/matching operations may use tags when their definitions opt into tag-aware behavior.
+
 ## 25.4 Policy inputs
 
 Policies may read:
@@ -2386,6 +2403,8 @@ Policies may read:
 - template identity
 - region/site
 - developmental phase
+- resource metadata
+- resource tags
 
 ## 25.5 Policy outputs
 
@@ -2442,7 +2461,7 @@ The test framework should be:
 
 - deterministic when given a seed
 - language-agnostic in concept
-- suitable for editor integration
+- suitable for use by editor integrations
 - suitable for command-line or automated execution
 - able to test single resources in isolation
 - able to test interactions between resources
@@ -2863,7 +2882,7 @@ Golden samples may include:
 
 Golden sample tests are useful for regression testing but should be used carefully when output is expected to evolve.
 
-Implementations should provide a way to regenerate or approve updated golden samples.
+The core testing framework may produce regenerated golden-sample candidate output, but approval workflows for accepting updated golden samples are outside the core requirements.
 
 ## 26.24 Statistical test tolerances
 
@@ -2917,7 +2936,9 @@ This packet should allow the failure to be reproduced exactly.
 
 ## 26.27 Editor integration
 
-A game/editor implementation should ideally allow developers to run tests from resource editing workflows.
+Editor integration is outside the core genetics library.
+
+A separate editor integration, including a future Godot editor plugin, may allow developers to run tests from resource editing workflows.
 
 Useful editor features include:
 
@@ -2931,7 +2952,8 @@ Useful editor features include:
 - inspect population template samples
 - generate example organisms from template
 - compare expected and actual outputs
-- approve updated golden samples
+
+Affected-resource and dependent-test features operate over the system definition, test resources, and resource graph currently loaded into Genomancy. Genomancy does not discover external editor or repository resources that were not supplied to it.
 
 ## 26.28 Continuous integration support
 
@@ -2941,7 +2963,7 @@ A command-line or batch mode should allow:
 
 - run all tests
 - run tests by tag
-- run tests for changed resources
+- run tests for a supplied list of changed or selected resources
 - run validation only
 - run statistical tests
 - run regression tests
@@ -2950,6 +2972,8 @@ A command-line or batch mode should allow:
 - produce reproducibility packets
 
 Reports should be available in both human-readable and machine-readable forms where practical.
+
+Reports are transient outputs intended for consumption by callers, tools, CI systems, or storage modules. The core test runner is not responsible for storing report history.
 
 ## 26.29 Test tags
 
@@ -3147,7 +3171,6 @@ This includes:
 - running unit tests
 - running integration tests
 - running simulation tests
-- approving golden samples
 - performing reachability analysis
 - running policy coverage checks
 
@@ -3427,6 +3450,10 @@ Serializable layers may include:
 - test definitions and fixtures
 - simulation outputs
 
+Exporting a runtime package or complete system definition is a serialization operation over the complete validated system definition. The core library defines how that complete system is serialized to an output stream or buffer.
+
+Handling the resulting serialized data after export, such as writing it to files, databases, archives, asset stores, source control, build outputs, or distribution packages, belongs to storage modules or external tools.
+
 ## 31.3 Stable identifiers and compatibility
 
 Serialized data must use stable resource identifiers for authored definitions.
@@ -3442,6 +3469,8 @@ If serialized data is loaded under a different system-definition version, migrat
 The core library must not interact directly with permanent storage.
 
 The core library may read from and write to streams, buffers, byte arrays, text data, or equivalent abstraction layers, but it must not require or own a database, filesystem layout, save-game repository, cloud service, asset database, or other persistence mechanism.
+
+Core deserialization receives complete serialized inputs through streams, buffers, byte arrays, text data, or equivalent abstraction layers. It does not know how those inputs were located, stored, indexed, version-controlled, packaged, or streamed from permanent storage.
 
 Permanent storage belongs outside the core library.
 
@@ -3474,6 +3503,14 @@ A storage module may provide:
 - migration orchestration around serialized data
 
 A storage module must not redefine core genetics behavior.
+
+Storage modules own reading stored serialization and streaming complete serialized inputs to the core deserializer.
+
+Storage modules may wrap databases or other persistent media, but they must not model arbitrary database semantics as genetics-system behavior.
+
+Transaction support exists to provide atomic logical writes for serialized outputs, especially complete system definitions, runtime packages, genome-version sets, template sets, and other major serialized components that should not be partially persisted.
+
+Indexing support exists to provide efficient access to stored serialized resources and may use verified metadata or tags to avoid unnecessary writes to persistent media. Storage indexes are caches or access aids, not authoritative records of resource existence, validity, project completeness, or release membership.
 
 ## 31.7 Test usage
 
@@ -3551,7 +3588,7 @@ The system is a generalized fantasy inheritance and expression framework where:
 - non-ploidal objects carry legacy-like inheritance outside allele-pair logic
 - traces preserve mythic ancestry and allow dramatic throwback descendants
 - mutation is the general policy-controlled mechanism for permanent genome modification
-- immutable genome versions support repair, reversion, audit, and hard-system consistency
+- immutable genome versions support repair, reversion, runtime history diagnostics, and hard-system consistency
 - population templates provide statistical genome generation and population simulation without explicit ancestry
 - template groups support nested population structure and cross-template blending
 - the core library defines stable JSON and binary serialization while leaving permanent storage to non-core modules
