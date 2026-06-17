@@ -19,6 +19,8 @@ for binary stream/buffer codecs, not for paths or repositories.
 `Genomancy.Storage.Common` is optional storage infrastructure used by concrete
 storage modules for root-scoped path resolution, atomic temporary-file writes,
 and file content hashing. It does not depend on `Genomancy.Core`.
+It also defines storage manifest metadata and deterministic manifest JSON
+serialization for storage indexes/provenance packets.
 
 The following boundaries are reserved for later slices:
 

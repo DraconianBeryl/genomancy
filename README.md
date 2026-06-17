@@ -16,6 +16,8 @@ to caller-owned filesystem paths under the same core/storage dependency boundary
 
 `Genomancy.Storage.Common` contains shared root-scoped path handling, atomic
 file-write mechanics, and SHA-256 content hashing for optional storage modules.
+It also provides deterministic storage manifests built from JSON and binary
+write metadata.
 
 ## Slice 0 Verification
 

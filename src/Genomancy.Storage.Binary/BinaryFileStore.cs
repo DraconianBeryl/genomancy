@@ -24,7 +24,14 @@ public sealed class BinaryFileStore
     {
         ArgumentNullException.ThrowIfNull(version);
 
-        return Write(relativePath, stream => GenomeBinaryCodec.WriteVersion(stream, version), overwrite);
+        return Write(
+            relativePath,
+            stream => GenomeBinaryCodec.WriteVersion(stream, version),
+            StoredResourceKind.GenomeVersion,
+            version.IndividualId.Value,
+            version.Id.Value,
+            version.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public GenomeVersion ReadGenomeVersion(
@@ -42,7 +49,14 @@ public sealed class BinaryFileStore
     {
         ArgumentNullException.ThrowIfNull(template);
 
-        return Write(relativePath, stream => PopulationTemplateBinaryCodec.Write(stream, template), overwrite);
+        return Write(
+            relativePath,
+            stream => PopulationTemplateBinaryCodec.Write(stream, template),
+            StoredResourceKind.PopulationTemplateVersion,
+            template.Id.Value,
+            template.VersionId.Value,
+            template.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public PopulationTemplateVersion ReadPopulationTemplate(
@@ -59,7 +73,14 @@ public sealed class BinaryFileStore
     {
         ArgumentNullException.ThrowIfNull(group);
 
-        return Write(relativePath, stream => PopulationTemplateGroupBinaryCodec.Write(stream, group), overwrite);
+        return Write(
+            relativePath,
+            stream => PopulationTemplateGroupBinaryCodec.Write(stream, group),
+            StoredResourceKind.PopulationTemplateGroupVersion,
+            group.Id.Value,
+            group.VersionId.Value,
+            group.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public PopulationTemplateGroupVersion ReadPopulationTemplateGroup(
@@ -76,7 +97,14 @@ public sealed class BinaryFileStore
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
-        return Write(relativePath, stream => TemplatePopulationManifestBinaryCodec.Write(stream, manifest), overwrite);
+        return Write(
+            relativePath,
+            stream => TemplatePopulationManifestBinaryCodec.Write(stream, manifest),
+            StoredResourceKind.TemplatePopulationManifest,
+            manifest.TemplateGroupId.Value,
+            manifest.TemplateGroupVersionId.Value,
+            manifest.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public TemplatePopulationManifest ReadTemplatePopulationManifest(
@@ -93,7 +121,14 @@ public sealed class BinaryFileStore
     {
         ArgumentNullException.ThrowIfNull(variant);
 
-        return Write(relativePath, stream => RuntimeBodyPlanVariantBinaryCodec.Write(stream, variant), overwrite);
+        return Write(
+            relativePath,
+            stream => RuntimeBodyPlanVariantBinaryCodec.Write(stream, variant),
+            StoredResourceKind.RuntimeBodyPlanVariant,
+            variant.Id.Value,
+            variant.Id.Value,
+            variant.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public RuntimeBodyPlanVariant ReadRuntimeBodyPlanVariant(
@@ -103,7 +138,14 @@ public sealed class BinaryFileStore
         return Read(relativePath, stream => RuntimeBodyPlanVariantBinaryCodec.Read(stream, expectedSystemDefinitionVersion));
     }
 
-    private BinaryFileWriteResult Write(string relativePath, Action<Stream> write, bool? overwrite)
+    private BinaryFileWriteResult Write(
+        string relativePath,
+        Action<Stream> write,
+        StoredResourceKind kind,
+        string resourceId,
+        string resourceVersionId,
+        string systemDefinitionVersion,
+        bool? overwrite)
     {
         var fullPath = ResolveRelativePath(relativePath);
 
@@ -117,7 +159,20 @@ public sealed class BinaryFileStore
                     _options.CreateDirectories,
                     overwrite ?? _options.OverwriteExisting,
                     _options.TemporaryFileSuffix));
-            return new BinaryFileWriteResult(result.FullPath, result.ByteCount, result.Sha256Hex);
+            return new BinaryFileWriteResult(
+                result.FullPath,
+                result.ByteCount,
+                result.Sha256Hex,
+                new StoredResourceEntry(
+                    kind,
+                    StoredResourceFormat.Binary,
+                    relativePath,
+                    result.FullPath,
+                    resourceId,
+                    resourceVersionId,
+                    systemDefinitionVersion,
+                    result.ByteCount,
+                    result.Sha256Hex));
         }
         catch (StorageFileException exception)
         {

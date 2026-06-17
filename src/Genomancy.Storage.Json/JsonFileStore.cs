@@ -24,7 +24,14 @@ public sealed class JsonFileStore
     {
         ArgumentNullException.ThrowIfNull(version);
 
-        return Write(relativePath, stream => GenomeJsonCodec.WriteVersion(stream, version), overwrite);
+        return Write(
+            relativePath,
+            stream => GenomeJsonCodec.WriteVersion(stream, version),
+            StoredResourceKind.GenomeVersion,
+            version.IndividualId.Value,
+            version.Id.Value,
+            version.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public GenomeVersion ReadGenomeVersion(
@@ -42,7 +49,14 @@ public sealed class JsonFileStore
     {
         ArgumentNullException.ThrowIfNull(template);
 
-        return Write(relativePath, stream => PopulationTemplateJsonCodec.Write(stream, template), overwrite);
+        return Write(
+            relativePath,
+            stream => PopulationTemplateJsonCodec.Write(stream, template),
+            StoredResourceKind.PopulationTemplateVersion,
+            template.Id.Value,
+            template.VersionId.Value,
+            template.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public PopulationTemplateVersion ReadPopulationTemplate(
@@ -59,7 +73,14 @@ public sealed class JsonFileStore
     {
         ArgumentNullException.ThrowIfNull(group);
 
-        return Write(relativePath, stream => PopulationTemplateGroupJsonCodec.Write(stream, group), overwrite);
+        return Write(
+            relativePath,
+            stream => PopulationTemplateGroupJsonCodec.Write(stream, group),
+            StoredResourceKind.PopulationTemplateGroupVersion,
+            group.Id.Value,
+            group.VersionId.Value,
+            group.SystemDefinitionVersion.Value,
+            overwrite);
     }
 
     public PopulationTemplateGroupVersion ReadPopulationTemplateGroup(
@@ -83,6 +104,10 @@ public sealed class JsonFileStore
                 var buffer = TemplatePopulationManifestJsonCodec.WriteToBuffer(manifest);
                 stream.Write(buffer);
             },
+            StoredResourceKind.TemplatePopulationManifest,
+            manifest.TemplateGroupId.Value,
+            manifest.TemplateGroupVersionId.Value,
+            manifest.SystemDefinitionVersion.Value,
             overwrite);
     }
 
@@ -112,6 +137,10 @@ public sealed class JsonFileStore
                 var buffer = RuntimeBodyPlanVariantJsonCodec.WriteToBuffer(variant);
                 stream.Write(buffer);
             },
+            StoredResourceKind.RuntimeBodyPlanVariant,
+            variant.Id.Value,
+            variant.Id.Value,
+            variant.SystemDefinitionVersion.Value,
             overwrite);
     }
 
@@ -127,7 +156,14 @@ public sealed class JsonFileStore
         });
     }
 
-    private JsonFileWriteResult Write(string relativePath, Action<Stream> write, bool? overwrite)
+    private JsonFileWriteResult Write(
+        string relativePath,
+        Action<Stream> write,
+        StoredResourceKind kind,
+        string resourceId,
+        string resourceVersionId,
+        string systemDefinitionVersion,
+        bool? overwrite)
     {
         var fullPath = ResolveRelativePath(relativePath);
 
@@ -141,7 +177,20 @@ public sealed class JsonFileStore
                     _options.CreateDirectories,
                     overwrite ?? _options.OverwriteExisting,
                     _options.TemporaryFileSuffix));
-            return new JsonFileWriteResult(result.FullPath, result.ByteCount, result.Sha256Hex);
+            return new JsonFileWriteResult(
+                result.FullPath,
+                result.ByteCount,
+                result.Sha256Hex,
+                new StoredResourceEntry(
+                    kind,
+                    StoredResourceFormat.Json,
+                    relativePath,
+                    result.FullPath,
+                    resourceId,
+                    resourceVersionId,
+                    systemDefinitionVersion,
+                    result.ByteCount,
+                    result.Sha256Hex));
         }
         catch (StorageFileException exception)
         {

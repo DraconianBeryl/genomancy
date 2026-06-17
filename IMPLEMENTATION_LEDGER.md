@@ -11,7 +11,7 @@
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
 | Last ledger update | 2026-06-16 |
-| Current implementation slice | Slice 16 - Shared storage infrastructure and content hashes |
+| Current implementation slice | Slice 17 - Storage manifests and write-entry metadata |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -78,6 +78,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-16 | Continue deferring direct resource-test framework work and use Slice 14 for an optional JSON file storage module outside core. | Project request | Advances storage boundaries and file persistence without adding resource-test definitions, operations, assertions, or runners. Resource testing shifts to Slice 15+. | Accepted |
 | 2026-06-16 | Continue deferring direct resource-test framework work and use Slice 15 for an optional binary file storage module outside core. | Project request | Advances storage coverage for preliminary binary codecs without adding resource-test definitions, operations, assertions, or runners. Resource testing shifts to Slice 16+. | Accepted |
 | 2026-06-16 | Continue deferring direct resource-test framework work and use Slice 16 for shared storage infrastructure and content hashes. | Project request | Reduces storage-module duplication and adds checksum metadata useful for later reproducibility/failure packets without adding resource-test definitions, operations, assertions, or runners. Resource testing shifts to Slice 17+. | Accepted |
+| 2026-06-16 | Continue deferring direct resource-test framework work and use Slice 17 for storage manifests and write-entry metadata. | Project request | Adds storage index/provenance infrastructure useful for later reproducibility and tooling without adding resource-test definitions, operations, assertions, or runners. Resource testing shifts to Slice 18+. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -129,12 +130,12 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-TGROUP | Nested template groups, weights, cross-template blending, generation simulation, and structure preservation. | 22 | In progress | 11 | Unit + simulation tests |
 | REQ-TFROMIND | Create statistical templates from individuals without conflating templates and genomes. | 23 | In progress | 10 | Unit tests |
 | REQ-POLICY | Explicit policy categories, granularity, inputs, and outputs. | 25 | In progress | 1 onward | Unit + coverage tests |
-| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 17+ | Self-tests + integration |
+| REQ-RTEST | First-class immutable-input resource test definitions, fixtures, operations, assertions, diagnostics, and runners. | 26, 27 | Planned | 18+ | Self-tests + integration |
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | In progress | 4, 12+ | Determinism + statistical tests |
-| REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 17+ | Validation + resource tests |
-| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 18 | Round-trip + compatibility |
-| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | In progress | 14-16, 18 | Integration tests |
-| REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 19 | Build + adapter tests |
+| REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | In progress | 1, 18+ | Validation + resource tests |
+| REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | In progress | 2 onward; finalized 19 | Round-trip + compatibility |
+| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | In progress | 14-17, 19 | Integration tests |
+| REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 20 | Build + adapter tests |
 
 ## Incremental implementation plan
 
@@ -1051,19 +1052,72 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Requirements advanced:** REQ-STORAGE, REQ-SERIAL, REQ-ID, REQ-RANDOM.
 
-### Slice 17+ - Resource testing framework
+### Slice 17 - Storage manifests and write-entry metadata
+
+**Status:** Verified on 2026-06-16 for the refined Slice 17 acceptance criteria. Broader requirement families remain **In progress** where later slices add SQLite storage, final compatibility contracts, resource tests, and Godot adapter storage workflows.
+
+**Objective:** Add storage manifest/index infrastructure over existing storage writes without implementing direct resource-test framework behavior.
+
+**Deliverables**
+
+- Add storage resource format and kind enums in `Genomancy.Storage.Common`.
+- Add `StoredResourceEntry` metadata for resource kind, format, relative path, full path, resource ID, resource version ID, system-definition version, byte count, and SHA-256 hash.
+- Add immutable `StorageManifest` containing same-system-version stored resource entries.
+- Add deterministic JSON codec for storage manifests through streams, buffers, and text.
+- Extend JSON and binary file write results with a `StoredResourceEntry`.
+- Populate write-result manifest entries for genome versions, population template versions, template-group versions, generated-population manifests, and runtime body-plan variants.
+
+**Acceptance criteria**
+
+- Mixed JSON/binary storage writes can be collected into a deterministic storage manifest.
+- Manifest entries preserve resource kind, format, path, ID/version, byte count, system-definition version, and hash metadata.
+- Storage manifest JSON round trips preserve ordering and metadata.
+- Storage manifests reject entries from mismatched system-definition versions.
+- Malformed storage manifest JSON is rejected with a storage manifest exception.
+- Direct resource-test framework definitions, operations, assertions, diagnostics, and runners remain unimplemented in this slice.
+
+**Tests**
+
+- Mixed JSON/binary write metadata manifest test.
+- Storage manifest JSON round-trip and canonical text test.
+- Manifest entry hash verification against stored file contents.
+- Manifest mixed-format metadata coverage for JSON genome entries and binary generated-population manifest entries.
+- Mismatched manifest entry system-definition rejection test.
+- Malformed manifest JSON rejection test.
+
+**Implemented**
+
+- `StoredResourceFormat`, `StoredResourceKind`, `StoredResourceEntry`, `StorageManifest`, `StorageManifestJsonCodec`, and `StorageManifestException`.
+- `JsonFileWriteResult.ManifestEntry` and `BinaryFileWriteResult.ManifestEntry`.
+- Manifest-entry population in `JsonFileStore` and `BinaryFileStore`.
+
+**Implementation simplification choices**
+
+- Storage manifests are storage indexes/provenance packets only; they are not resource-test definitions, test suites, assertions, or failure packets.
+- Manifest entries use string IDs to keep `Genomancy.Storage.Common` independent from `Genomancy.Core`.
+- Runtime body-plan variants currently use the variant ID as both resource ID and resource-version ID because they do not yet have a separate version ID.
+- Manifest JSON is deterministic but not a final compatibility matrix or migration format.
+
+**Not yet implemented**
+
+- Direct resource-test framework work: test resources, fixtures, operations, assertions, runners, failure packets, tags, severity, snapshots, fuzz/matrix execution, and runtime-safe resource-test subsets.
+- SQLite storage, manifest signing, manifest file stores, migration workflows, batch transactions, storage-level compatibility reports, final compact binary layouts, per-resource structured hashes, and Godot adapter storage.
+
+**Requirements advanced:** REQ-STORAGE, REQ-SERIAL, REQ-ID, REQ-RANDOM.
+
+### Slice 18+ - Resource testing framework
 
 Refine and likely subdivide before implementation. Build designer-authored test resources, fixtures, operations, assertions, custom extension points, validation/reachability/policy coverage, deterministic simulation and statistical tests, diagnostics/reproducibility packets, tags, severity, snapshots, fuzz/matrix execution, isolation, and runtime-safe subsets.
 
 **Requirements targeted:** REQ-RTEST, REQ-VALIDATE, REQ-RANDOM, REQ-SERIAL.
 
-### Slice 18 - Serialization hardening and remaining optional storage modules
+### Slice 19 - Serialization hardening and remaining optional storage modules
 
 Refine before implementation. Finalize compatibility contracts and granular JSON/binary formats, then add non-core SQLite storage modules with migrations and test-fixture support.
 
 **Requirements targeted:** REQ-SERIAL, REQ-STORAGE, REQ-ID.
 
-### Slice 19 - Godot adapter and packaging
+### Slice 20 - Godot adapter and packaging
 
 Refine against the selected Godot/.NET versions. Add a thin adapter for Godot authoring/runtime workflows, package import/export, diagnostics, and engine-facing conversions while preserving a Godot-free core.
 
@@ -1192,6 +1246,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - shared root-scoped path resolution and atomic temporary-file write/move mechanics
   - shared whole-file SHA-256 hash computation
   - JSON and binary write results now include `Sha256Hex`
+- Slice 17 storage manifests and write-entry metadata:
+  - storage resource kind/format enums and immutable stored-resource entries
+  - deterministic JSON codec for storage manifests
+  - JSON and binary write results now include manifest entries
+  - manifest entries capture resource kind, format, relative/full path, resource ID/version, system-definition version, byte count, and SHA-256 hash
 
 ### Not yet implemented
 
@@ -1202,7 +1261,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Full hybrid morphology construction, compatibility resource graphs, inviable embryo state, and germline/generation-site behavior.
 - Authored non-ploidal/trace resource definitions, non-ploidal mutation operations, trace activation effects, trace loss policies, and trace statistical tests.
 - Full mutation event history, serialized/resource-authored mutation policies, random mutation timing/target selection, and arbitrary historical repair.
-- Final compact serialization formats, SQLite storage, storage manifests/indexes, structured/per-section checksums, and migration workflows.
+- Final compact serialization formats, SQLite storage, persistent manifest file-store workflows, structured/per-section checksums, signed indexes, and migration workflows.
 - All Godot integration.
 - All resource tests.
 - Statistical simulation/tolerance tests and reproducibility packets.
@@ -1223,7 +1282,8 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 14 implements root-scoped caller-directed JSON file storage only; mandatory repository layout, indexes, checksums, SQLite, batch transactions, and migration workflows are deferred. Binary-file storage was deferred from Slice 14 and added in Slice 15.
 - Slice 15 implements root-scoped caller-directed binary file storage over preliminary binary codecs only; mandatory repository layout, indexes, checksums, SQLite, batch transactions, migration workflows, and final compact binary layouts are deferred.
 - Slice 16 adds whole-file SHA-256 hashes only; structured/per-resource-section checksums, signed manifests, indexes, SQLite, batch transactions, and migration workflows are deferred.
-- Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 18.
+- Slice 17 adds deterministic storage manifests as index/provenance metadata only; manifest signing, manifest file-store workflows, compatibility reports, and resource-test failure packets are deferred.
+- Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 19.
 - Slice 4 weighted-selection coverage is deterministic boundary coverage; statistical tolerances are deferred until the simulation/statistical test layer exists.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
@@ -1330,6 +1390,11 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
   - JSON storage write-result SHA-256 checks for genome versions, population templates, template groups, generated-population manifests, and runtime variants
   - binary storage write-result SHA-256 checks for genome versions, population templates, template groups, generated-population manifests, and runtime variants
   - JSON and binary storage path safety and store-specific exception regression coverage remains passing after the refactor
+- Slice 17 package-free implementation tests in `tests/Genomancy.Tests`:
+  - mixed JSON/binary storage manifest creation from write-result entries
+  - storage manifest JSON round trip and canonical text preservation
+  - manifest entry hash verification against stored file contents
+  - manifest same-system-version enforcement and malformed JSON rejection
 - Build verification through `scripts/verify.sh`.
 
 ### Requirements with tests
@@ -1351,6 +1416,7 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 - Slice 14 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 15 acceptance criteria are verified by `scripts/verify.sh`.
 - Slice 16 acceptance criteria are verified by `scripts/verify.sh`.
+- Slice 17 acceptance criteria are verified by `scripts/verify.sh`.
 - REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
 - REQ-MODE, REQ-MODE-FREEZE, REQ-ID, REQ-MODEL, REQ-POLICY, REQ-VALIDATE, REQ-GENOME, REQ-GENE, REQ-GROUP, REQ-BODY, REQ-VARIANT, REQ-EXPR, REQ-EXTERNAL, REQ-PLOIDY, REQ-REPRO, REQ-RANDOM, REQ-MUTATION, REQ-VERSION, REQ-ACQUIRED, REQ-NONPLOID, REQ-TRACE, REQ-COMPAT, REQ-DEVELOP, REQ-MOSAIC, REQ-TEMPLATE, REQ-TGROUP, REQ-TFROMIND, REQ-SERIAL, and REQ-STORAGE have partial slice coverage only; each remains broader than the implemented slices and stays **In progress** where later slices add required behavior.
 
@@ -1370,14 +1436,14 @@ Refine against the selected Godot/.NET versions. Add a thin adapter for Godot au
 
 | ID | Decision or risk | Needed by | Current handling |
 |---|---|---|---|
-| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 19 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
-| OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use versioned preliminary JSON-backed codecs, then stabilize final compact layouts in Slice 18. |
+| OPEN-001 | Supported Godot adapter version range beyond the initial local Godot 4.6.2 environment. | Slice 20 | Initial core target is `net9.0`; adapter compatibility remains open until Godot adapter refinement. |
+| OPEN-002 | Binary format design and compatibility strategy. | Slice 2 | Use versioned preliminary JSON-backed codecs, then stabilize final compact layouts in Slice 19. |
 | OPEN-003 | Definition immutability mechanism. | Slice 1 | Resolved for Slice 1 with immutable definition records, read-only copied collections, and a frozen snapshot created from the mutable builder; retained-reference mutation and snapshot-isolation tests pass. |
 | OPEN-004 | Policy extensibility model and safe serialization of policy configuration. | Slice 1 | Separate policy identity/configuration from executable host implementation. |
 | OPEN-005 | Numeric value representation and deterministic arithmetic guarantees. | Slice 2-3 | Decide before numeric expression becomes public format. |
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Resolved for implemented mechanics with FNV-1a stream-name derivation and SplitMix64 draws; statistical tolerance and reproducibility packet design remains under REQ-RANDOM later work. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
-| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 18 | Keep provider outside core and evaluate platform support before selection. |
+| OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 19 | Keep provider outside core and evaluate platform support before selection. |
 
 ## Ledger update checklist
 

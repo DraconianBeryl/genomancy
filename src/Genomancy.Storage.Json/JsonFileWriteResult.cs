@@ -1,6 +1,9 @@
+using Genomancy.Storage.Common;
+
 namespace Genomancy.Storage.Json;
 
 public sealed record JsonFileWriteResult(
     string FullPath,
     long ByteCount,
-    string Sha256Hex);
+    string Sha256Hex,
+    StoredResourceEntry ManifestEntry);

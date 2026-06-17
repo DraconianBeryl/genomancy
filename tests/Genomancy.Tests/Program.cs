@@ -99,6 +99,7 @@ var tests = new (string Name, Action Test)[]
     ("Binary file storage rejects unsafe paths and overwrite conflicts", BinaryFileStorageRejectsUnsafePathsAndOverwriteConflicts),
     ("JSON file storage round trips serialized resources", JsonFileStorageRoundTripsSerializedResources),
     ("JSON file storage rejects unsafe paths and overwrite conflicts", JsonFileStorageRejectsUnsafePathsAndOverwriteConflicts),
+    ("Storage manifests preserve write metadata and round trip", StorageManifestsPreserveWriteMetadataAndRoundTrip),
 };
 
 var failures = new List<string>();
@@ -2136,6 +2137,72 @@ static void JsonFileStorageRejectsUnsafePathsAndOverwriteConflicts()
         AssertThrows<JsonFileStoreException>(() => store.WriteGenomeVersion("genomes//empty.json", genome));
         AssertThrows<JsonFileStoreException>(() => store.ReadGenomeVersion("missing/file.json", TestVersion()));
         AssertTrue(!File.Exists(Path.Combine(root, "escape.json")), "Rejected path should not write outside the requested location.");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void StorageManifestsPreserveWriteMetadataAndRoundTrip()
+{
+    var root = CreateTemporaryStorageRoot();
+
+    try
+    {
+        var jsonStore = new JsonFileStore(Path.Combine(root, "json"));
+        var binaryStore = new BinaryFileStore(Path.Combine(root, "binary"));
+        var genome = CreateGenomeVersion("manifest-storage.genome.v1", null, "allele.skin.baseline");
+        var template = CreatePopulationTemplate("template.manifest-storage", "template.manifest-storage.v1", lightWeight: 8, darkWeight: 2);
+        var group = new PopulationTemplateGroupVersion(
+            PopulationTemplateGroupId.Parse("template-group.manifest-storage"),
+            PopulationTemplateGroupVersionId.Parse("template-group.manifest-storage.v1"),
+            TestVersion(),
+            [new WeightedPopulationTemplate(template, 1)],
+            changeSummary: "manifest storage group");
+        var manifest = PopulationTemplateGroupService.GeneratePopulationManifest(
+            group,
+            1,
+            800,
+            "manifest-storage.generated.",
+            "external:manifest-storage.");
+        var variant = new RuntimeBodyPlanVariant(
+            BodyPlanVariantId.Parse("variant.manifest-storage"),
+            TestVersion(),
+            Id("body.human"),
+            requiredGroupIds: [Id("group.common")],
+            changeSummary: "manifest storage variant");
+        var entries = new[]
+        {
+            jsonStore.WriteGenomeVersion("genomes/storage-genome.json", genome).ManifestEntry,
+            jsonStore.WritePopulationTemplate("templates/storage-template.json", template).ManifestEntry,
+            jsonStore.WritePopulationTemplateGroup("template-groups/storage-group.json", group).ManifestEntry,
+            binaryStore.WriteTemplatePopulationManifest("manifests/storage-manifest.tpmbin", manifest).ManifestEntry,
+            binaryStore.WriteRuntimeBodyPlanVariant("variants/storage-variant.vbin", variant).ManifestEntry,
+        };
+        var storageManifest = new StorageManifest(TestVersion().Value, entries, "mixed storage manifest");
+        var text = StorageManifestJsonCodec.WriteToText(storageManifest);
+        var roundTrip = StorageManifestJsonCodec.ReadFromBuffer(StorageManifestJsonCodec.WriteToBuffer(storageManifest));
+
+        AssertEqual(storageManifest, roundTrip);
+        AssertEqual(text, StorageManifestJsonCodec.WriteToText(roundTrip));
+        AssertEqual(5, roundTrip.Entries.Count);
+        AssertTrue(roundTrip.Entries.Any(entry => entry.Kind == StoredResourceKind.GenomeVersion && entry.Format == StoredResourceFormat.Json), "Manifest must include JSON genome entry.");
+        AssertTrue(roundTrip.Entries.Any(entry => entry.Kind == StoredResourceKind.TemplatePopulationManifest && entry.Format == StoredResourceFormat.Binary), "Manifest must include binary generation-manifest entry.");
+
+        foreach (var entry in roundTrip.Entries)
+        {
+            AssertEqual(TestVersion().Value, entry.SystemDefinitionVersion);
+            AssertTrue(entry.ByteCount > 0, "Manifest entry byte count must be positive.");
+            AssertEqual(StorageFileOperations.ComputeSha256Hex(entry.FullPath), entry.Sha256Hex);
+        }
+
+        AssertThrows<ArgumentException>(() => new StorageManifest(
+            TestVersion().Value,
+            [
+                entries[0] with { SystemDefinitionVersion = "other.1" },
+            ]));
+        AssertThrows<StorageManifestException>(() => StorageManifestJsonCodec.ReadFromBuffer("{malformed"u8));
     }
     finally
     {
