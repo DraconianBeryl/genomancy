@@ -2772,6 +2772,8 @@ The genetics objects do not compute these facts internally, but tests must be ab
 
 The framework should be able to validate the full graph of authored resources.
 
+Validation operates on the resource graph supplied to the system. It does not make the genetics system responsible for discovering, inventorying, or managing every external resource definition that may exist outside that supplied graph.
+
 Graph validation should detect:
 
 - missing references
@@ -3479,6 +3481,28 @@ Tests may use optional storage modules to verify serialization, persistence boun
 
 Core resource tests should still be able to run without permanent storage by using in-memory serialized data.
 
+## 31.8 Content management boundary
+
+Genomancy is not a content management system for external resource definitions, even when optional storage modules are used.
+
+The project expects some other system, such as a version control system, asset pipeline, editor database, repository manager, or game-specific content system, to own the authoritative set of external resource definition files and their history.
+
+Genomancy is responsible for faithfully loading, decoding, and reporting on the serialized resources it is given. It may validate the loaded resource graph according to genetics-system rules, such as identifier resolution, schema compatibility, dependency validity, and policy consistency.
+
+Genomancy is not responsible for proving that the supplied resource set is complete relative to an external project, repository, editor workspace, asset database, or setting canon.
+
+Storage modules must not assume responsibility for:
+
+- discovering every resource definition that ought to exist
+- determining whether external files are missing from a project
+- enforcing source-control status
+- tracking authoritative content history
+- resolving merge conflicts
+- deciding which external resources belong to a release
+- guaranteeing that a directory, database, archive, or workspace is a complete content corpus
+
+Such responsibilities belong to the external content management, source control, asset pipeline, build, or editor systems that provide resources to Genomancy.
+
 ---
 
 # 32. Interfaceable out-of-scope systems
@@ -3539,4 +3563,3 @@ The system is a generalized fantasy inheritance and expression framework where:
 The central hard-system boundary is:
 
 > The genetics system defines how heritable material is represented, expressed, modified, inherited, tested, and simulated. External systems define why special metaphysical, social, prophetic, or narrative events occur.
-

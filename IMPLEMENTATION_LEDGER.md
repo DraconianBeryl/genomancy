@@ -10,7 +10,7 @@
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-05 |
+| Last ledger update | 2026-06-17 |
 | Current implementation slice | Slice 0 - Project foundation (not started) |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
@@ -49,6 +49,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 - Identity, souls, reincarnation, possession identity, prophecy, fate, social caste, legal species identity, blood-purity ideology, political legitimacy, true names, and related metaphysics or social systems.
 - Ecological selection, survival selection, mating behavior, geography, economy, and culture unless supplied as external context.
 - A mandatory database, filesystem layout, cloud service, asset database, save repository, networking model, user interface, or game-specific entity model in the core library.
+- Content management for external resource definitions, including authoritative corpus discovery, source-control status, content history, merge resolution, release membership, or completeness guarantees for project files, directories, repositories, editor workspaces, databases, or archives.
 - Godot-specific inheritance or serialization as a requirement of core domain objects.
 - Unconstrained mutation or automatic invention of body structures outside authored policies.
 
@@ -59,6 +60,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-05 | Select C# as the implementation language. | Project request | Constrains solution structure and public API design. | Accepted |
 | 2026-06-05 | Require Godot usability without exclusive Godot coupling. | Project request | Core assemblies must not reference Godot; integration belongs in an adapter assembly. | Accepted |
 | 2026-06-05 | Require incremental-refinement planning. | Project request | Near-term slices have detailed deliverables/tests; distant slices remain outcome-level and must be refined before work starts. | Accepted |
+| 2026-06-17 | Clarify that Genomancy storage modules are not content management systems for external resource definitions. | Project clarification | Storage modules must faithfully load supplied resources and may validate the loaded graph, but external systems own authoritative corpus completeness, source control, history, merge resolution, and release membership. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -74,6 +76,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-008 | Serialized authored references use stable IDs; runtime variants reference frozen definitions and policies. | Preserves compatibility and avoids embedding mutable authoring definitions. | Accepted |
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
 | ARC-010 | The exact target framework, binary encoding, and SQLite provider remain open until Slice 0/serialization refinement. | These choices require compatibility and maintenance evaluation. | Open |
+| ARC-011 | Optional storage modules load and save supplied serialized resources but do not own external content-management responsibilities. | Keeps Genomancy focused on genetics resource loading/validation and leaves authoritative corpus management to version control, asset pipelines, editor databases, or game-specific systems. | Accepted |
 
 ## Requirements register
 
@@ -110,7 +113,7 @@ The source specification remains authoritative for detailed behavior. The IDs be
 | REQ-RANDOM | Deterministic execution, separated random streams, reproducibility packets, and statistical tolerances. | 26.13-26.14, 26.24, 26.26 | Planned | 4, 12 | Determinism + statistical tests |
 | REQ-VALIDATE | Resource graph, reachability, policy coverage, invariants, negative cases, and required baseline content tests. | 26.19-26.22, 26.39 | Planned | 1, 12-13 | Validation + resource tests |
 | REQ-SERIAL | Stable JSON and binary formats at multiple granularities, including versions, variants, templates, tests, and failure packets. | 31.1-31.3 | Planned | 2 onward; finalized 14 | Round-trip + compatibility |
-| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core. | 31.4-31.7 | Planned | 14 | Integration tests |
+| REQ-STORAGE | Core has no permanent storage; optional JSON-file, binary-file, and SQLite modules depend on core and are not content management systems for external resource definitions. | 31.4-31.8 | Planned | 14 | Integration tests |
 | REQ-GODOT | Optional Godot adapter consumes core APIs without redefining genetics behavior. | Project scope injection | Planned | 15 | Build + adapter tests |
 
 ## Incremental implementation plan
@@ -430,4 +433,3 @@ Every implementation change must update applicable portions of this ledger:
 6. Update **Test accounting** with exact covered and uncovered requirements.
 7. Record new architectural decisions, open decisions, and material risks.
 8. Mark a requirement **Verified** only after its required tests pass.
-
