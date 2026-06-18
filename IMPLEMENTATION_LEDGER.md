@@ -5,13 +5,13 @@
 | Field | Value |
 |---|---|
 | Project | Genomancy |
-| Ledger status | Active; initial planning baseline |
+| Ledger status | Active; Slice 0 foundation implemented |
 | Requirements source | `fantasy_genetics_system_requirements.md` |
-| Source revision | Initial repository version; no implementation existed when this ledger was created |
+| Source revision | Initial repository version plus Slice 0 implementation foundation |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-17 |
-| Current implementation slice | Slice 0 - Project foundation (not started) |
+| Last ledger update | 2026-06-18 |
+| Current implementation slice | Slice 0 - Project foundation (verified); Slice 1 next |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -77,6 +77,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-17 | Bound resource metadata and add resource tags. | Project clarification | Metadata is limited to Genomancy needs; tags may participate in policy, test, validation, reachability, and selection/matching behavior. | Accepted |
 | 2026-06-17 | Replace audit terminology with runtime history diagnostics. | Project clarification | Genome history is for runtime genetic-state changes, including designer-authored past events in genome records, not design-change audit trails. | Accepted |
 | 2026-06-17 | Clarify reports as transient outputs. | Project clarification | Reports are produced for callers/tools/CI/storage modules; the core runner does not store report history. | Accepted |
+| 2026-06-18 | Implement Slice 0 as a dependency-free foundation using a console implementation test runner instead of a NuGet test framework. | Implementation | Avoids external package restore requirements while still providing CI-capable smoke and dependency-boundary checks. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -91,7 +92,7 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | ARC-007 | Core persistence APIs target streams/buffers/text, not paths or databases. | Preserves the required storage boundary. | Accepted |
 | ARC-008 | Serialized authored references use stable IDs; runtime variants reference frozen definitions and policies. | Preserves compatibility and avoids embedding mutable authoring definitions. | Accepted |
 | ARC-009 | Public APIs will use ordinary .NET types unless an adapter requires conversion. | Keeps the core portable across Godot and non-Godot hosts. | Accepted |
-| ARC-010 | The exact target framework, binary encoding, and SQLite provider remain open until Slice 0/serialization refinement. | These choices require compatibility and maintenance evaluation. | Open |
+| ARC-010 | Core targets `netstandard2.1`; test/tooling projects target the installed SDK environment, currently `net9.0`. Binary encoding and SQLite provider remain open until serialization/storage refinement. | `netstandard2.1` keeps the core portable for non-Godot hosts and a future Godot adapter while allowing current repository verification on the installed .NET 9 SDK. | Partially accepted; serialization/storage choices open |
 | ARC-011 | Optional storage modules load and save supplied serialized resources but do not own external content-management responsibilities. | Keeps Genomancy focused on genetics resource loading/validation and leaves authoritative corpus management to version control, asset pipelines, editor databases, or game-specific systems. | Accepted |
 | ARC-012 | Runtime package export/import is complete-system serialization in core; persisted-data handling belongs to storage modules or external tools. | Preserves stable core formats without making core responsible for files, databases, archives, repositories, or distribution packages. | Accepted |
 | ARC-013 | Migrations are save-compatibility transforms between system-definition versions, preferably policy-defined and optionally host-callback-backed. | Supports game updates without requiring every save to embed a full genetics system definition. | Accepted |
@@ -146,6 +147,8 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 **Objective:** Establish a buildable, testable C# repository with dependency direction that protects the engine-neutral core.
 
+**Implementation status:** Verified by `./scripts/verify.sh` on 2026-06-18.
+
 **Deliverables**
 
 - Create a solution and initial projects for core implementation and implementation tests.
@@ -171,6 +174,41 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 **Explicit deferrals**
 
 - No genetics behavior, serialization format, Godot resource type, or storage provider is implemented.
+
+**Implemented**
+
+- Created `Genomancy.sln`.
+- Created `src/Genomancy.Core/Genomancy.Core.csproj`.
+- Created `tests/Genomancy.Tests/Genomancy.Tests.csproj`.
+- Added shared build settings in `Directory.Build.props`.
+- Added workspace-local verification command in `scripts/verify.sh`.
+- Added architecture note in `docs/architecture.md`.
+- Added a minimal `GenomancyCore` assembly marker API.
+- Added a self-contained console implementation test runner.
+
+**Implementation simplification choices**
+
+- Used a console test runner rather than xUnit/NUnit/MSTest so Slice 0 does not require NuGet test packages.
+- Kept extension points as documented project boundaries rather than empty projects for serialization, storage, resource testing, and Godot integration.
+
+**Tests implemented**
+
+- Core assembly smoke-load test.
+- Core forbidden dependency boundary test for Godot, SQLite providers, and common test frameworks.
+- Core target-framework test.
+
+**Not yet implemented**
+
+- Genetics behavior.
+- Serialization formats.
+- Optional storage providers.
+- Godot runtime adapter.
+- Godot editor integration.
+
+**Untested**
+
+- No automated CI service configuration has been added.
+- No future adapter or storage project dependency graph exists yet because those projects are deferred.
 
 ### Slice 1 - Definition kernel, modes, IDs, and validation
 

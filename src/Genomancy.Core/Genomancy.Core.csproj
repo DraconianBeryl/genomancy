@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>Genomancy.Core</AssemblyName>
+    <RootNamespace>Genomancy.Core</RootNamespace>
+    <Description>Engine-neutral core domain library for Genomancy.</Description>
+  </PropertyGroup>
+
+</Project>
