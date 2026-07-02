@@ -39,37 +39,17 @@ SDK 9.0.111 on Gentoo Linux and Godot 4.6.2 is installed locally. The core
 library has no Godot dependency, so this target can be revisited if a later
 Godot adapter or deployment target requires a narrower framework.
 
-## Verification Toolchain Debt
+## Verification Limits
 
-The Slice 0 verification script avoids generated native apphost execution and
-runs the built test assembly with `dotnet exec`.
-
-This is a deliberate toolchain workaround, not a domain architecture choice. In
-the current Gentoo source-built .NET SDK 9.0.111 environment, a generated Linux
-apphost for `Genomancy.Tests` has been observed to build successfully but fail
-at launch. Binary inspection showed that the apphost contained
-`Genomancy.Tests.dll` at one apphost placeholder location while the
-runtime-used application path slot still contained the apphost placeholder
-string:
-
-```text
-c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2
-```
-
-The native launcher then attempted to execute a file with that placeholder name
-from the output directory. The managed test assembly itself ran correctly with
-`dotnet exec`, so this does not indicate a failure in `Genomancy.Core`, the
-test harness, or `net9.0` as a target framework.
+Current skeleton verification builds managed project output only. It does not
+run implementation tests and does not prove generated native apphost launch
+behavior.
 
 Technical debt:
 
-- Verification currently proves managed build output and smoke-test behavior,
-  not generated native apphost launch behavior.
 - Any future Genomancy command-line tools, packaged executables, or standalone
   distribution artifacts must explicitly test their generated launchers on the
   target SDK/runtime/package combination.
 - Before relying on `dotnet run --no-build`, generated apphosts, or native
-  launcher packaging in CI or release workflows, revalidate the SDK behavior or
-  use a toolchain known not to produce this apphost placeholder issue.
-- This workaround should be removed only after apphost generation has a
-  recorded passing check in the target environment.
+  launcher packaging in CI or release workflows, add a recorded passing check
+  in the target environment.

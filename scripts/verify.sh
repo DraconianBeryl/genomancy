@@ -37,4 +37,3 @@ dotnet build Genomancy.sln \
   -m:1 \
   -p:RestoreBuildInParallel=false \
   -p:BuildInParallel=false
-dotnet exec tests/Genomancy.Tests/bin/Debug/net9.0/Genomancy.Tests.dll

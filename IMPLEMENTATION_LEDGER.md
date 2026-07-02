@@ -5,13 +5,13 @@
 | Field | Value |
 |---|---|
 | Project | Genomancy |
-| Ledger status | Active; initial planning baseline |
+| Ledger status | Active; reset planning baseline |
 | Requirements source | `fantasy_genetics_system_requirements.md` |
 | Source revision | Initial repository version; no implementation existed when this ledger was created |
 | Target language | C# |
 | Integration target | Godot-compatible, with no Godot dependency in the core library |
-| Last ledger update | 2026-06-18 |
-| Current implementation slice | Slice 1 - Definition kernel, modes, IDs, and validation (not started) |
+| Last ledger update | 2026-07-01 |
+| Current implementation slice | Planning reset - skeleton and documentation only |
 
 This file is the persistent requirements and progress ledger for Genomancy. Update it in the same change that alters scope, architecture, implementation status, or test coverage. Do not mark a requirement complete solely because a type or API exists; completion requires its acceptance criteria and tests to pass.
 
@@ -79,8 +79,9 @@ This file is the persistent requirements and progress ledger for Genomancy. Upda
 | 2026-06-17 | Clarify reports as transient outputs. | Project clarification | Reports are produced for callers/tools/CI/storage modules; the core runner does not store report history. | Accepted |
 | 2026-06-06 | Use .NET SDK 9.0.111 and target `net9.0` for the initial core/test projects. | Slice 0 implementation | Establishes current build target; may be revisited if a later Godot adapter requires a narrower target. | Accepted |
 | 2026-06-06 | Use repo-local ignored `.dotnet-work/` directories for .NET, NuGet, XDG, and MSBuild writable state during verification. | Slice 0 implementation | Makes verification work in restricted Linux/Codex sandbox environments without relying on writable home directories or shared `/tmp` paths. | Accepted |
-| 2026-06-18 | Use single-node MSBuild verification and execute the built test DLL with `dotnet exec`. | Cherry-pick remediation from later implementation attempt | Avoids Codex/Linux sandbox sensitivity in parallel restore/build probing and generated native apphost execution while preserving build and smoke-test coverage. | Accepted |
-| 2026-06-18 | Record generated native apphost execution as toolchain technical debt. | Verification investigation | Managed build output and smoke tests are verified, but generated native launchers must be separately revalidated before any CLI/package/release workflow depends on them. | Accepted |
+| 2026-06-18 | Use single-node MSBuild verification. | Project tooling | Keeps skeleton verification deterministic and conservative. The reset skeleton builds only and has no runnable test DLL. | Accepted |
+| 2026-06-18 | Record generated native apphost execution as unverified by skeleton verification. | Project tooling | Generated native launchers must be separately verified before any CLI/package/release workflow depends on them. | Accepted |
+| 2026-07-01 | Reset repository to skeleton and documentation only. | Project reset request | Removes placeholder implementation/test behavior from the current commit while keeping project structure and verification scripts. | Accepted |
 
 ## Architectural decisions and constraints
 
@@ -149,7 +150,7 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 
 ### Slice 0 - Project foundation
 
-**Status:** Verified on 2026-06-06.
+**Status:** Reset to skeleton on 2026-07-01; skeleton build verified, domain behavior not implemented.
 
 **Objective:** Establish a buildable, testable C# repository with dependency direction that protects the engine-neutral core.
 
@@ -159,21 +160,19 @@ The next five slices are deliberately detailed. Slices 5 and later are progressi
 - Reserve clear extension points or project boundaries for serialization, optional storage, resource testing, and Godot integration without implementing their domain features yet.
 - Select and document the target .NET framework based on supported Godot C# compatibility and non-Godot host usability.
 - Enable nullable reference types, deterministic builds, warnings suitable for library code, and consistent formatting.
-- Add a minimal CI-capable command that restores, builds, and runs implementation tests.
+- Add a minimal CI-capable command that restores and builds the skeleton.
 - Add an architecture note documenting allowed dependencies: adapters and storage depend on core; core does not depend on them.
 
 **Acceptance criteria**
 
-- A clean checkout can restore, build, and test with one documented command.
+- A clean checkout can restore and build with one documented command.
 - `Genomancy.Core` has no Godot, SQLite, filesystem-storage, or test-framework dependency.
-- A smoke test loads the core assembly.
 - Project names and namespaces are stable enough for Slice 1 public types.
 
 **Tests**
 
-- One implementation smoke test.
 - Build verification for all created projects.
-- Dependency/reference inspection, automated if practical.
+- Dependency/reference inspection, automated if practical, is planned but not currently implemented.
 
 **Explicit deferrals**
 
@@ -402,10 +401,9 @@ A separate Godot editor plugin may later support authoring workflows, resource e
 
 ### Implemented
 
-- Initial persistent requirements/progress ledger.
-- Requirements-family IDs and source-section traceability.
-- Initial architecture constraints and incrementally refined implementation plan.
-- Slice 0 project foundation:
+- No genetics behavior is implemented.
+- No placeholder public API or smoke-test behavior is implemented.
+- Skeleton files present:
   - `Genomancy.sln`
   - `src/Genomancy.Core`
   - `tests/Genomancy.Tests`
@@ -415,53 +413,56 @@ A separate Godot editor plugin may later support authoring workflows, resource e
   - architecture note in `docs/architecture.md`
   - documented verification command in `README.md`
   - verification script in `scripts/verify.sh`
-- Minimal engine-neutral core assembly marker.
-- Package-free implementation smoke test harness with core dependency inspection.
-- Repo-local ignored `.dotnet-work/` verification state for restricted Linux/Codex sandbox execution.
-- Single-node verification with direct `dotnet exec` of the built test DLL.
-- Documentation of the current generated native apphost issue and its verification/release implications.
+- Requirements and planning documentation present:
+  - `fantasy_genetics_system_requirements.md`
+  - this persistent requirements/progress ledger
+  - requirements-family IDs and source-section traceability
+  - initial architecture constraints and incrementally refined implementation plan
+- Verification tooling present:
+  - repo-local ignored `.dotnet-work/` verification state pattern for restricted Linux/Codex sandbox execution
+  - single-node MSBuild verification settings
+  - skeleton build verification through `scripts/verify.sh`
+  - `scripts/verify-godot.sh`, which reports that the Godot smoke project is not yet implemented
 
 ### Not yet implemented
 
-- Runtime/domain genetics behavior beyond the Slice 0 core assembly marker.
+- Runtime/domain genetics behavior.
+- Public core API beyond the empty project skeleton.
 - All core and optional serialization/storage modules.
 - All Godot integration.
 - All resource tests.
-- Implementation tests beyond the Slice 0 smoke/dependency checks.
+- All implementation tests.
+- Godot smoke project; `scripts/verify-godot.sh` is retained but intentionally exits with "Godot smoke project not yet implemented" until that project exists.
 
 ### Recorded simplifications
 
+- The current reset intentionally contains only project skeleton, documentation, and verification scripts. This is not a feature simplification; it is a repository reset before renewed planning.
 - Slice 3 starts with dominance hierarchy, codominance, and numeric midpoint expression; advanced expression is deferred to Slice 8.
 - Slice 4 starts with ordinary deterministic reproduction and a compatibility-policy stub; nonstandard reproduction and full compatibility are deferred to Slice 7.
 - Preliminary Slice 2 serialization covers only then-existing models; complete format stabilization is deferred to Slice 14.
-- Slice 0 verification executes the built test DLL directly rather than the generated native apphost.
 - Later slices are intentionally outcome-level under incremental refinement and cannot start until their deliverables, acceptance criteria, and tests are expanded.
 
-### Toolchain technical debt
+### Tooling limits
 
-- In the current Gentoo source-built .NET SDK 9.0.111 environment, generated Linux apphost execution has failed after a successful build. The observed generated launcher contained `Genomancy.Tests.dll` at one placeholder location but retained the `c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2` apphost placeholder at the runtime-used application path slot.
-- Direct managed execution with `dotnet exec tests/Genomancy.Tests/bin/Debug/net9.0/Genomancy.Tests.dll` passes, so the issue is treated as a toolchain/native-launcher risk rather than a Genomancy core or test-harness failure.
-- Until this is revalidated with the target SDK/runtime/package combination, project verification must not rely on `dotnet run --no-build` or generated native apphost launch behavior.
+- The reset skeleton does not build a runnable test apphost.
+- Current verification must not be treated as proof of `dotnet run --no-build` or generated native apphost launch behavior.
 - Future CLI tools, standalone executables, CI packaging, and release workflows must add explicit generated-launcher checks before claiming native apphost support.
 
 ## Test accounting
 
 ### Tests present
 
-- Slice 0 package-free implementation smoke tests in `tests/Genomancy.Tests`:
-  - core assembly exposes stable name
-  - core assembly is marked Godot independent
-  - core assembly has no forbidden Godot, SQLite, or test-framework dependencies
 - Build verification through `scripts/verify.sh`.
+- No implementation tests are currently present.
 
 ### Requirements with tests
 
-- Slice 0 project-foundation acceptance criteria are verified by `scripts/verify.sh`.
-- REQ-GODOT is partially covered only for the core-boundary requirement that `Genomancy.Core` has no Godot dependency. The actual Godot adapter remains unimplemented and untested.
+- No genetics requirement families currently have implementation tests.
+- Skeleton buildability was checked with `scripts/verify.sh` on 2026-07-01; this is project-structure verification, not genetics behavior verification.
 
 ### Requirements without tests
 
-- All requirement families in the requirements register except the limited Slice 0 core-boundary coverage noted above.
+- All requirement families in the requirements register.
 
 ### Test layers required by the project
 
@@ -482,7 +483,7 @@ A separate Godot editor plugin may later support authoring workflows, resource e
 | OPEN-006 | Random algorithm and stream-derivation contract. | Slice 4 | Select a specified cross-runtime deterministic algorithm; do not rely on `System.Random` behavior as a serialized contract. |
 | OPEN-007 | Resource limits for graph depth, dependency traversal, and simulation workloads. | Slice 1 onward | Add validation limits as affected features are refined. |
 | OPEN-008 | SQLite provider and native-binary implications for Godot export targets. | Slice 14 | Keep provider outside core and evaluate platform support before selection. |
-| OPEN-009 | Generated native apphost reliability under the target SDK/runtime/package combination. | Any CLI, standalone executable, CI package, or release workflow that depends on native launchers | Verification uses direct `dotnet exec` managed execution for now; add a native-launcher regression check before depending on apphost execution. |
+| OPEN-009 | Generated native apphost reliability under the target SDK/runtime/package combination. | Any CLI, standalone executable, CI package, or release workflow that depends on native launchers | Skeleton verification currently builds only; add a native-launcher regression check before depending on apphost execution. |
 
 ## Ledger update checklist
 

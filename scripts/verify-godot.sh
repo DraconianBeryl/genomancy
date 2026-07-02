@@ -5,6 +5,11 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 godot_work_dir="${GODOT_WORK_DIR:-$repo_root/.godot-work}"
 
+if [[ ! -f "$repo_root/tests/Genomancy.Godot.Smoke/Genomancy.Godot.Smoke.csproj" ]]; then
+  echo "Godot smoke project not yet implemented: tests/Genomancy.Godot.Smoke/Genomancy.Godot.Smoke.csproj" >&2
+  exit 1
+fi
+
 godot_command="${GODOT_COMMAND:-godot}"
 godot_binary="$(command -v "$godot_command")"
 godot_binary="$(readlink -f -- "$godot_binary")"
